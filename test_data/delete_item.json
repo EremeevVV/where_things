@@ -1,0 +1,29 @@
+{
+  "meta": {
+    "locale": "ru-RU",
+    "timezone": "Europe/Moscow",
+    "client_id": "ru.yandex.searchplugin/7.16 (none none; android 4.4.2)",
+    "interfaces": { "screen": {} }
+  },
+  "session": {
+    "message_id": 1,
+    "session_id": "test_session",
+    "skill_id": "test_skill",
+    "user": { "user_id": "test_user", "access_token": "test_token" },
+    "application": { "application_id": "test_app" },
+    "new": false
+  },
+  "request": {
+    "command": "забудь про паспорт",
+    "original_utterance": "Забудь про паспорт.",
+    "markup": {},
+    "nlu": {
+      "tokens": ["забудь", "про", "паспорт"],
+      "entities": [],
+      "intents": {}
+    },
+    "type": "SimpleUtterance"
+  },
+  "state": { "session": { "items": { "паспорт": "ящик стола", "ключи": "карман" } }, "user": {}, "application": {} },
+  "version": "1.0"
+}
