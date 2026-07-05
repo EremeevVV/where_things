@@ -48,3 +48,43 @@ def event_list():
 @pytest.fixture
 def event_delete():
     return load_event("delete_item")
+
+
+@pytest.fixture
+def event_awaiting_place_answer():
+    return load_event("awaiting_place_answer")
+
+
+@pytest.fixture
+def event_awaiting_place_short():
+    return load_event("awaiting_place_short")
+
+
+@pytest.fixture
+def event_awaiting_place_short_one_char():
+    return load_event("awaiting_place_short_one_char")
+
+
+@pytest.fixture
+def event_awaiting_place_short_two_visits():
+    return load_event("awaiting_place_short_two_visits")
+
+
+@pytest.fixture
+def event_awaiting_place_breaks_with_find():
+    return load_event("awaiting_place_breaks_with_find")
+
+
+@pytest.fixture
+def event_awaiting_place_breaks_with_delete():
+    return load_event("awaiting_place_breaks_with_delete")
+
+
+@pytest.fixture
+def event_awaiting_place_new_save_full():
+    return load_event("awaiting_place_new_save_full")
+
+
+@pytest.fixture
+def event_awaiting_place_new_save_incomplete():
+    return load_event("awaiting_place_new_save_incomplete")

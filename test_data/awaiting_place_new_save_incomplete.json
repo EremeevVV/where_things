@@ -1,0 +1,38 @@
+{
+  "meta": {
+    "locale": "ru-RU",
+    "timezone": "Europe/Moscow",
+    "client_id": "ru.yandex.searchplugin/7.16 (none none; android 4.4.2)",
+    "interfaces": { "screen": {} }
+  },
+  "session": {
+    "message_id": 2,
+    "session_id": "test_session",
+    "skill_id": "test_skill",
+    "user": { "user_id": "test_user", "access_token": "test_token" },
+    "application": { "application_id": "test_app" },
+    "new": false
+  },
+  "request": {
+    "command": "запомни что телефон",
+    "original_utterance": "Запомни, что телефон.",
+    "markup": {},
+    "nlu": {
+      "tokens": ["запомни", "что", "телефон"],
+      "entities": [],
+      "intents": {}
+    },
+    "type": "SimpleUtterance"
+  },
+  "state": {
+    "session": {
+      "dialog_state": "AWAITING_PLACE",
+      "pending_thing": "паспорт",
+      "state_visits": 1,
+      "items": {}
+    },
+    "user": {},
+    "application": {}
+  },
+  "version": "1.0"
+}

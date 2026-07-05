@@ -11,6 +11,7 @@ Stack: Python 3.14, Yandex Cloud Functions (webhook), YDB serverless.
 - `PROJECT_INSTRUCTIONS.md` — full project context, constraints, architecture decisions, iteration log. **Read this first.**
 - `KICKOFF_PROMPT.md` — iteration plan and current task.
 - `main.py` — handler (`handler(event, context)`) for Yandex Cloud Functions.
+- `states.py` — State pattern: `DialogState` ABC, `IdleState`, `AwaitingPlaceState`, `build_response()`.
 - `test_runner.py` — local simulator with timing and warnings.
 
 ## Commands
@@ -69,3 +70,17 @@ Sample events live in `test_data/`. Edit or add JSON files there to test new sce
 ## Development approach
 
 Work in iterations per `KICKOFF_PROMPT.md`. After each iteration, update the iteration log in `PROJECT_INSTRUCTIONS.md` section 9. One handler file, explicit functions per intent (`handle_save`, `handle_find`, `handle_list`, `handle_delete`), NLU parser separate.
+
+## Post-build verification
+
+After every code change, run the full verification pipeline and fix all issues before finishing:
+
+```bash
+uv run python -m ruff check . --fix && uv run python -m mypy main.py --ignore-missing-imports --strict && uv run python -m pytest -v
+```
+
+1. **ruff** — linting + auto-fix
+2. **mypy** — static type checking
+3. **pytest** — test suite
+
+All three must pass with zero errors. If any step fails, fix the issues and re-run.
