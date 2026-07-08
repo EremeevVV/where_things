@@ -1,4 +1,40 @@
+from __future__ import annotations
+
+from unittest.mock import patch
+
 from main import handler, parse_intent
+
+# ── Helpers ───────────────────────────────────────────────────────────────────
+
+
+def _make_event(
+    command: str,
+    user_id: str = "test_user",
+    session_state: dict | None = None,
+    items: dict | None = None,
+) -> dict:
+    """Build a minimal Yandex Dialogs event for testing."""
+    return {
+        "session": {
+            "new": False,
+            "user": {"user_id": user_id},
+        },
+        "request": {
+            "command": command,
+            "original_utterance": command,
+            "nlu": {"tokens": [], "entities": [], "intents": {}},
+            "type": "SimpleUtterance",
+        },
+        "state": {
+            "session": session_state or {},
+            "user": {},
+            "application": {},
+        },
+        "version": "1.0",
+    }
+
+
+# ── parse_intent ──────────────────────────────────────────────────────────────
 
 
 class TestParseIntent:
@@ -58,6 +94,9 @@ class TestParseIntent:
         assert intent == "UNKNOWN"
 
 
+# ── Launch ────────────────────────────────────────────────────────────────────
+
+
 class TestLaunch:
     def test_greeting_contains_hint(self, event_launch):
         result = handler(event_launch, None)
@@ -74,182 +113,242 @@ class TestLaunch:
         assert "tts" in result["response"]
 
 
-class TestSave:
-    def test_saves_to_session_state(self, event_save):
-        result = handler(event_save, None)
-        items = result.get("session_state", {}).get("items", {})
-        assert "паспорт" in items
-        assert items["паспорт"] == "в верхнем ящике стола"
+# ── Save ──────────────────────────────────────────────────────────────────────
 
-    def test_confirmation_text(self, event_save):
-        result = handler(event_save, None)
+
+class TestSave:
+    @patch("db.upsert_item")
+    def test_saves_to_ydb(self, mock_upsert):
+        event = _make_event("запомни что паспорт лежит в верхнем ящике стола")
+        result = handler(event, None)
+        mock_upsert.assert_called_once_with(
+            "test_user", "паспорт", "в верхнем ящике стола"
+        )
+        assert "запомнила" in result["response"]["text"].lower()
+
+    @patch("db.upsert_item")
+    def test_confirmation_text(self, mock_upsert):
+        event = _make_event("запомни что паспорт лежит в ящике")
+        result = handler(event, None)
         text = result["response"]["text"].lower()
         assert "запомнила" in text
         assert "паспорт" in text
 
-    def test_multiword_place(self, event_save_multiword):
-        result = handler(event_save_multiword, None)
-        items = result.get("session_state", {}).get("items", {})
-        assert items["зарядка"] == "на полке у окна"
+    @patch("db.upsert_item")
+    def test_multiword_place(self, mock_upsert):
+        event = _make_event("запомни что зарядка лежит на полке у окна")
+        handler(event, None)
+        mock_upsert.assert_called_once_with(
+            "test_user", "зарядка", "на полке у окна"
+        )
 
-    def test_incomplete_asks_place(self, event_save_incomplete):
-        result = handler(event_save_incomplete, None)
+    def test_incomplete_asks_place(self):
+        event = _make_event("запомни что паспорт")
+        result = handler(event, None)
         text = result["response"]["text"].lower()
         assert "где" in text or "место" in text
-        assert result.get("session_state", {}).get("items", {}).get(
-            "паспорт"
-        ) is None
+        assert result["session_state"]["dialog_state"] == "AWAITING_PLACE"
+        assert result["session_state"]["pending_thing"] == "паспорт"
+
+
+# ── Find ──────────────────────────────────────────────────────────────────────
 
 
 class TestFind:
-    def test_finds_saved_item(self, event_find):
-        result = handler(event_find, None)
+    @patch("db.load_items", return_value={"паспорт": "в ящике"})
+    def test_finds_saved_item(self, mock_load):
+        event = _make_event("где лежит паспорт")
+        result = handler(event, None)
         text = result["response"]["text"].lower()
         assert "ящик" in text
 
-    def test_unknown_item(self, event_find_unknown):
-        result = handler(event_find_unknown, None)
+    @patch("db.load_items", return_value={})
+    def test_unknown_item(self, mock_load):
+        event = _make_event("где лежит паспорт")
+        result = handler(event, None)
         text = result["response"]["text"].lower()
-        assert "не знаю" in text or "не помню" in text
+        assert "не знаю" in text
+
+
+# ── List ──────────────────────────────────────────────────────────────────────
 
 
 class TestList:
-    def test_lists_items(self, event_list):
-        result = handler(event_list, None)
+    @patch("db.load_items", return_value={"паспорт": "ящик", "ключи": "шкаф"})
+    def test_lists_items(self, mock_load):
+        event = _make_event("что ты помнишь")
+        result = handler(event, None)
         text = result["response"]["text"].lower()
         assert "паспорт" in text
         assert "ключи" in text
 
-    def test_empty_list(self, event_launch):
-        result = handler(event_launch, None)
-        event_fresh = {
-            "session": {"new": False, "user": {"user_id": "x"}},
-            "request": {
-                "command": "что ты помнишь",
-                "original_utterance": "Что ты помнишь?",
-                "nlu": {"tokens": [], "entities": [], "intents": {}},
-                "type": "SimpleUtterance",
-            },
-            "state": {"session": {}, "user": {}, "application": {}},
-            "version": "1.0",
-        }
-        result = handler(event_fresh, None)
+    @patch("db.load_items", return_value={})
+    def test_empty_list(self, mock_load):
+        event = _make_event("что ты помнишь")
+        result = handler(event, None)
         assert "ничего" in result["response"]["text"].lower()
 
 
-class TestDelete:
-    def test_deletes_item(self, event_delete):
-        result = handler(event_delete, None)
-        items = result.get("session_state", {}).get("items", {})
-        assert "паспорт" not in items
-        assert "ключи" in items
+# ── Delete ────────────────────────────────────────────────────────────────────
 
-    def test_delete_not_found(self, event_launch):
-        event = {
-            "session": {"new": False, "user": {"user_id": "x"}},
-            "request": {
-                "command": "забудь про телефон",
-                "original_utterance": "Забудь про телефон.",
-                "nlu": {"tokens": [], "entities": [], "intents": {}},
-                "type": "SimpleUtterance",
-            },
-            "state": {
-                "session": {"items": {"паспорт": "ящик"}},
-                "user": {},
-                "application": {},
-            },
-            "version": "1.0",
-        }
+
+class TestDelete:
+    @patch("db.delete_item")
+    @patch("db.load_items", return_value={"паспорт": "ящик", "ключи": "шкаф"})
+    def test_deletes_item(self, mock_load, mock_delete):
+        event = _make_event("забудь про паспорт")
+        result = handler(event, None)
+        mock_delete.assert_called_once_with("test_user", "паспорт")
+        assert "забыла" in result["response"]["text"].lower()
+
+    @patch("db.load_items", return_value={})
+    def test_delete_not_found(self, mock_load):
+        event = _make_event("забудь про телефон")
         result = handler(event, None)
         text = result["response"]["text"].lower()
         assert "нет" in text or "не помню" in text
 
 
+# ── Unknown ───────────────────────────────────────────────────────────────────
+
+
 class TestUnknown:
-    def test_unknown_command(self, event_launch):
-        event = {
-            "session": {"new": False, "user": {"user_id": "x"}},
-            "request": {
-                "command": "расскажи анекдот",
-                "original_utterance": "Расскажи анекдот.",
-                "nlu": {"tokens": [], "entities": [], "intents": {}},
-                "type": "SimpleUtterance",
-            },
-            "state": {"session": {}, "user": {}, "application": {}},
-            "version": "1.0",
-        }
+    def test_unknown_command(self):
+        event = _make_event("расскажи анекдот")
         result = handler(event, None)
         assert "response" in result
         assert result["response"]["end_session"] is False
 
 
+# ── Unauthorized ──────────────────────────────────────────────────────────────
+
+
+class TestUnauthorized:
+    def test_no_user_id_shows_auth_error(self):
+        event = _make_event("запомни что паспорт лежит в ящике", user_id="")
+        result = handler(event, None)
+        text = result["response"]["text"].lower()
+        assert "авториз" in text
+
+    def test_no_user_id_on_find(self):
+        event = _make_event("где лежит паспорт", user_id="")
+        result = handler(event, None)
+        text = result["response"]["text"].lower()
+        assert "авториз" in text
+
+
+# ── State machine ─────────────────────────────────────────────────────────────
+
+
 class TestStateMachine:
     """Тесты многошагового диалога (машина состояний)."""
 
-    def test_incomplete_saves_transitions_to_awaiting(
-        self, event_save_incomplete
-    ):
-        result = handler(event_save_incomplete, None)
+    def test_incomplete_saves_transitions_to_awaiting(self):
+        event = _make_event("запомни что паспорт")
+        result = handler(event, None)
         state = result.get("session_state", {})
         assert state.get("dialog_state") == "AWAITING_PLACE"
         assert state.get("pending_thing") == "паспорт"
         assert state.get("state_visits") == 1
 
-    def test_awaiting_place_saves_on_answer(
-        self, event_awaiting_place_answer
-    ):
-        result = handler(event_awaiting_place_answer, None)
+    @patch("db.upsert_item")
+    def test_awaiting_place_saves_on_answer(self, mock_upsert):
+        event = _make_event(
+            "в ящике стола",
+            session_state={
+                "dialog_state": "AWAITING_PLACE",
+                "pending_thing": "паспорт",
+                "state_visits": 1,
+            },
+        )
+        result = handler(event, None)
         state = result.get("session_state", {})
         assert state.get("dialog_state") is None or state.get(
             "dialog_state"
         ) == "IDLE"
-        assert state["items"]["паспорт"] == "в ящике стола"
+        mock_upsert.assert_called_once_with(
+            "test_user", "паспорт", "в ящике стола"
+        )
         assert "запомнила" in result["response"]["text"].lower()
 
-    def test_awaiting_place_short_gives_hint(
-        self, event_awaiting_place_short
-    ):
-        result = handler(event_awaiting_place_short, None)
+    @patch("db.upsert_item")
+    def test_awaiting_place_saves_short_answer(self, mock_upsert):
+        # "привет" — 6 символов, >= 2, считается местом
+        event = _make_event(
+            "привет",
+            session_state={
+                "dialog_state": "AWAITING_PLACE",
+                "pending_thing": "паспорт",
+                "state_visits": 1,
+            },
+        )
+        result = handler(event, None)
         state = result.get("session_state", {})
-        # "привет" (6 символов) — >= 2, поэтому считается местом
         assert state.get("dialog_state") is None or state.get(
             "dialog_state"
         ) == "IDLE"
-        assert state["items"]["паспорт"] == "привет"
+        mock_upsert.assert_called_once_with(
+            "test_user", "паспорт", "привет"
+        )
 
-    def test_awaiting_place_one_char_gives_hint(
-        self, event_awaiting_place_short_one_char
-    ):
-        result = handler(event_awaiting_place_short_one_char, None)
+    def test_awaiting_place_one_char_gives_hint(self):
+        event = _make_event(
+            "а",
+            session_state={
+                "dialog_state": "AWAITING_PLACE",
+                "pending_thing": "паспорт",
+                "state_visits": 1,
+            },
+        )
+        result = handler(event, None)
         state = result.get("session_state", {})
         assert state.get("dialog_state") == "AWAITING_PLACE"
         assert state.get("state_visits") == 2
 
-    def test_awaiting_place_second_hint_has_example(
-        self, event_awaiting_place_short_two_visits
-    ):
-        result = handler(event_awaiting_place_short_two_visits, None)
+    def test_awaiting_place_second_hint_has_example(self):
+        event = _make_event(
+            "а",
+            session_state={
+                "dialog_state": "AWAITING_PLACE",
+                "pending_thing": "паспорт",
+                "state_visits": 2,
+            },
+        )
+        result = handler(event, None)
         state = result.get("session_state", {})
         assert state.get("dialog_state") == "AWAITING_PLACE"
         assert state.get("state_visits") == 3
         text = result["response"]["text"].lower()
         assert "пример" in text
 
-    def test_awaiting_place_breaks_with_find(
-        self, event_awaiting_place_breaks_with_find
-    ):
-        result = handler(event_awaiting_place_breaks_with_find, None)
+    @patch("db.load_items", return_value={})
+    def test_awaiting_place_breaks_with_find(self, mock_load):
+        event = _make_event(
+            "где лежит ключи",
+            session_state={
+                "dialog_state": "AWAITING_PLACE",
+                "pending_thing": "паспорт",
+                "state_visits": 1,
+            },
+        )
+        result = handler(event, None)
         state = result.get("session_state", {})
         assert state.get("dialog_state") is None or state.get(
             "dialog_state"
         ) == "IDLE"
-        text = result["response"]["text"].lower()
-        assert "не знаю" in text or "не помню" in text
 
-    def test_awaiting_place_breaks_with_delete(
-        self, event_awaiting_place_breaks_with_delete
-    ):
-        result = handler(event_awaiting_place_breaks_with_delete, None)
+    @patch("db.delete_item")
+    @patch("db.load_items", return_value={})
+    def test_awaiting_place_breaks_with_delete(self, mock_load, mock_delete):
+        event = _make_event(
+            "забудь про паспорт",
+            session_state={
+                "dialog_state": "AWAITING_PLACE",
+                "pending_thing": "ключи",
+                "state_visits": 1,
+            },
+        )
+        result = handler(event, None)
         state = result.get("session_state", {})
         assert state.get("dialog_state") is None or state.get(
             "dialog_state"
@@ -257,173 +356,103 @@ class TestStateMachine:
         text = result["response"]["text"].lower()
         assert "забыла" in text or "нет" in text or "не помню" in text
 
-    def test_awaiting_place_new_save_full(
-        self, event_awaiting_place_new_save_full
-    ):
-        result = handler(event_awaiting_place_new_save_full, None)
+    @patch("db.upsert_item")
+    def test_awaiting_place_new_save_full(self, mock_upsert):
+        event = _make_event(
+            "запомни что телефон лежит в рюкзаке",
+            session_state={
+                "dialog_state": "AWAITING_PLACE",
+                "pending_thing": "паспорт",
+                "state_visits": 1,
+            },
+        )
+        result = handler(event, None)
         state = result.get("session_state", {})
         assert state.get("dialog_state") is None or state.get(
             "dialog_state"
         ) == "IDLE"
-        assert state["items"]["телефон"] == "в рюкзаке"
+        mock_upsert.assert_called_once_with(
+            "test_user", "телефон", "в рюкзаке"
+        )
         assert "запомнила" in result["response"]["text"].lower()
 
-    def test_awaiting_place_new_save_incomplete(
-        self, event_awaiting_place_new_save_incomplete
-    ):
-        result = handler(event_awaiting_place_new_save_incomplete, None)
+    def test_awaiting_place_new_save_incomplete(self):
+        event = _make_event(
+            "запомни что телефон",
+            session_state={
+                "dialog_state": "AWAITING_PLACE",
+                "pending_thing": "паспорт",
+                "state_visits": 1,
+            },
+        )
+        result = handler(event, None)
         state = result.get("session_state", {})
         assert state.get("dialog_state") == "AWAITING_PLACE"
         assert state.get("pending_thing") == "телефон"
         assert state.get("state_visits") == 1
 
-    def test_full_flow_incomplete_then_place(self):
+    @patch("db.upsert_item")
+    def test_full_flow_incomplete_then_place(self, mock_upsert):
         """Интеграционный тест: два вызова handler подряд."""
-        event1 = {
-            "session": {"new": False, "user": {"user_id": "x"}},
-            "request": {
-                "command": "запомни что паспорт",
-                "original_utterance": "Запомни, что паспорт.",
-                "nlu": {"tokens": [], "entities": [], "intents": {}},
-                "type": "SimpleUtterance",
-            },
-            "state": {"session": {}, "user": {}, "application": {}},
-            "version": "1.0",
-        }
+        event1 = _make_event("запомни что паспорт")
         result1 = handler(event1, None)
         assert result1["session_state"]["dialog_state"] == "AWAITING_PLACE"
         assert result1["session_state"]["pending_thing"] == "паспорт"
 
         # Второй вызов — отвечаем местом
-        event2 = {
-            "session": {"new": False, "user": {"user_id": "x"}},
-            "request": {
-                "command": "в ящике стола",
-                "original_utterance": "В ящике стола.",
-                "nlu": {"tokens": [], "entities": [], "intents": {}},
-                "type": "SimpleUtterance",
-            },
-            "state": {"session": result1["session_state"]},
-            "version": "1.0",
-        }
-        result2 = handler(event2, None)
-        assert "паспорт" in result2["session_state"]["items"]
-        assert (
-            result2["session_state"]["items"]["паспорт"] == "в ящике стола"
+        event2 = _make_event(
+            "в ящике стола",
+            session_state=result1["session_state"],
+        )
+        handler(event2, None)
+        mock_upsert.assert_called_once_with(
+            "test_user", "паспорт", "в ящике стола"
         )
 
-    def test_full_flow_breaks_with_find(self):
+    @patch("db.load_items", return_value={})
+    def test_full_flow_breaks_with_find(self, mock_load):
         """Интеграционный тест: прерываем сохранение командой FIND."""
-        event1 = {
-            "session": {"new": False, "user": {"user_id": "x"}},
-            "request": {
-                "command": "запомни что паспорт",
-                "original_utterance": "Запомни, что паспорт.",
-                "nlu": {"tokens": [], "entities": [], "intents": {}},
-                "type": "SimpleUtterance",
-            },
-            "state": {"session": {}, "user": {}, "application": {}},
-            "version": "1.0",
-        }
+        event1 = _make_event("запомни что паспорт")
         result1 = handler(event1, None)
         assert result1["session_state"]["dialog_state"] == "AWAITING_PLACE"
 
-        event2 = {
-            "session": {"new": False, "user": {"user_id": "x"}},
-            "request": {
-                "command": "где лежит ключи",
-                "original_utterance": "Где лежит ключи?",
-                "nlu": {"tokens": [], "entities": [], "intents": {}},
-                "type": "SimpleUtterance",
-            },
-            "state": {"session": result1["session_state"]},
-            "version": "1.0",
-        }
+        event2 = _make_event(
+            "где лежит ключи",
+            session_state=result1["session_state"],
+        )
         result2 = handler(event2, None)
         assert result2["session_state"].get("dialog_state") is None
         assert result2["session_state"].get("pending_thing") is None
 
-    def test_regression_save_full(self):
+    @patch("db.upsert_item")
+    def test_regression_save_full(self, mock_upsert):
         """Регрессия: полное сохранение работает как раньше."""
-        event = {
-            "session": {"new": False, "user": {"user_id": "x"}},
-            "request": {
-                "command": "запомни что паспорт лежит в ящике",
-                "original_utterance": "Запомни, что паспорт лежит в ящике.",
-                "nlu": {"tokens": [], "entities": [], "intents": {}},
-                "type": "SimpleUtterance",
-            },
-            "state": {"session": {}, "user": {}, "application": {}},
-            "version": "1.0",
-        }
+        event = _make_event("запомни что паспорт лежит в ящике")
         result = handler(event, None)
-        assert result["session_state"]["items"]["паспорт"] == "в ящике"
+        mock_upsert.assert_called_once_with("test_user", "паспорт", "в ящике")
         assert "запомнила" in result["response"]["text"].lower()
 
-    def test_regression_find(self):
+    @patch("db.load_items", return_value={"паспорт": "в ящике"})
+    def test_regression_find(self, mock_load):
         """Регрессия: поиск работает как раньше."""
-        event = {
-            "session": {"new": False, "user": {"user_id": "x"}},
-            "request": {
-                "command": "где лежит паспорт",
-                "original_utterance": "Где лежит паспорт?",
-                "nlu": {"tokens": [], "entities": [], "intents": {}},
-                "type": "SimpleUtterance",
-            },
-            "state": {
-                "session": {"items": {"паспорт": "в ящике"}},
-                "user": {},
-                "application": {},
-            },
-            "version": "1.0",
-        }
+        event = _make_event("где лежит паспорт")
         result = handler(event, None)
         assert "ящик" in result["response"]["text"].lower()
 
-    def test_regression_list(self):
+    @patch("db.load_items", return_value={"паспорт": "ящик", "ключи": "шкаф"})
+    def test_regression_list(self, mock_load):
         """Регрессия: список работает как раньше."""
-        event = {
-            "session": {"new": False, "user": {"user_id": "x"}},
-            "request": {
-                "command": "что ты помнишь",
-                "original_utterance": "Что ты помнишь?",
-                "nlu": {"tokens": [], "entities": [], "intents": {}},
-                "type": "SimpleUtterance",
-            },
-            "state": {
-                "session": {
-                    "items": {"паспорт": "ящик", "ключи": "шкаф"}
-                },
-                "user": {},
-                "application": {},
-            },
-            "version": "1.0",
-        }
+        event = _make_event("что ты помнишь")
         result = handler(event, None)
         text = result["response"]["text"].lower()
         assert "паспорт" in text
         assert "ключи" in text
 
-    def test_regression_delete(self):
+    @patch("db.delete_item")
+    @patch("db.load_items", return_value={"паспорт": "ящик", "ключи": "шкаф"})
+    def test_regression_delete(self, mock_load, mock_delete):
         """Регрессия: удаление работает как раньше."""
-        event = {
-            "session": {"new": False, "user": {"user_id": "x"}},
-            "request": {
-                "command": "забудь про паспорт",
-                "original_utterance": "Забудь про паспорт.",
-                "nlu": {"tokens": [], "entities": [], "intents": {}},
-                "type": "SimpleUtterance",
-            },
-            "state": {
-                "session": {
-                    "items": {"паспорт": "ящик", "ключи": "шкаф"}
-                },
-                "user": {},
-                "application": {},
-            },
-            "version": "1.0",
-        }
+        event = _make_event("забудь про паспорт")
         result = handler(event, None)
-        items = result["session_state"]["items"]
-        assert "паспорт" not in items
-        assert "ключи" in items
+        mock_delete.assert_called_once_with("test_user", "паспорт")
+        assert "забыла" in result["response"]["text"].lower()

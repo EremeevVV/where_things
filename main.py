@@ -86,10 +86,12 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     # Парсим намерение
     intent, slots = parse_intent(command)
 
-    # Читаем данные сессии
+    # Читаем данные сессии и user_id
     session_data: dict[str, Any] = dict(
         event.get("state", {}).get("session", {})
     )
+    user_id: str = session.get("user", {}).get("user_id", "")
+    session_data["user_id"] = user_id
 
     # Определяем текущее состояние
     state_name = session_data.get("dialog_state", "IDLE")

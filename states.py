@@ -3,6 +3,8 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from typing import Any
 
+import db
+
 
 class DialogState(ABC):
     """Базовый интерфейс состояния диалога."""
@@ -19,7 +21,7 @@ class DialogState(ABC):
 
         Возвращает:
           next_state_name — имя следующего состояния ("IDLE" или текущее)
-          session_data — обновлённые данные сессии
+          session_data — обновлённые данные сессии (dialog_state и т.д.)
           response_text — текст ответа пользователю
         """
 
@@ -32,22 +34,19 @@ def build_response(
 ) -> dict[str, Any]:
     """Собрать ответ для Yandex Dialogs.
 
-    Формирует session_state и response в правильном формате.
+    Items хранятся в YDB, в session_state — только состояние диалога.
     """
     version = event.get("version", "1.0")
     session = event.get("session", {})
 
-    # Если состояние IDLE — убираем dialog_state из ответа (экономим место)
+    # В session_state — только данные диалога (без items)
     if next_state == "IDLE":
-        state_to_return: dict[str, Any] = {
-            "items": session_data.get("items", {}),
-        }
+        state_to_return: dict[str, Any] = {}
     else:
         state_to_return = {
             "dialog_state": next_state,
             "pending_thing": session_data.get("pending_thing", ""),
             "state_visits": session_data.get("state_visits", 0),
-            "items": session_data.get("items", {}),
         }
 
     return {
@@ -56,6 +55,12 @@ def build_response(
         "session_state": state_to_return,
         "response": {"text": text, "tts": text, "end_session": False},
     }
+
+
+_NO_AUTH_TEXT = (
+    "Для работы с памятью нужно авторизоваться через Яндекс ID. "
+    "Откройте навык на колонке или в приложении с авторизацией."
+)
 
 
 class IdleState(DialogState):
@@ -69,61 +74,59 @@ class IdleState(DialogState):
         slots: dict[str, str],
     ) -> tuple[str, dict[str, Any], str]:
         command = event.get("request", {}).get("command", "").strip()
-        items = dict(session_data.get("items", {}))
+        user_id: str = session_data.get("user_id", "")
+
+        if not user_id:
+            return "IDLE", session_data, _NO_AUTH_TEXT
 
         if intent == "SAVE":
             thing = slots.get("thing", "")
             place = slots.get("place", "")
 
             if place:
-                items[thing] = place
+                db.upsert_item(user_id, thing, place)
                 text = f"Запомнила: {thing} — {place}."
-                return (
-                    "IDLE",
-                    {"items": items},
-                    text,
-                )
+                return "IDLE", session_data, text
             else:
                 # Неполное сохранение — переход в AwaitingPlaceState
                 session_data["dialog_state"] = "AWAITING_PLACE"
                 session_data["pending_thing"] = thing
                 session_data["state_visits"] = 1
                 text = f"Где лежит {thing}? Скажите место."
-                return (
-                    "AWAITING_PLACE",
-                    session_data,
-                    text,
-                )
+                return "AWAITING_PLACE", session_data, text
 
         if intent == "FIND":
             thing = slots.get("thing", "")
+            items = db.load_items(user_id)
             found_place: str | None = items.get(thing)
             if found_place:
                 text = f"{thing.capitalize()} — {found_place}."
             else:
                 text = f"Я не знаю, где лежит {thing}."
-            return "IDLE", {"items": items}, text
+            return "IDLE", session_data, text
 
         if intent == "LIST":
+            items = db.load_items(user_id)
             if not items:
                 text = "Я пока ничего не помню."
             else:
                 lines = [f"{name} — {place}" for name, place in items.items()]
                 text = "Запомнено:\n" + "\n".join(lines)
-            return "IDLE", {"items": items}, text
+            return "IDLE", session_data, text
 
         if intent == "DELETE":
             thing = slots.get("thing", "")
+            items = db.load_items(user_id)
             if thing in items:
-                del items[thing]
+                db.delete_item(user_id, thing)
                 text = f"Забыла про {thing}."
             else:
                 text = f"У меня нет воспоминаний про {thing}."
-            return "IDLE", {"items": items}, text
+            return "IDLE", session_data, text
 
         # UNKNOWN — действие по умолчанию
         text = f"Не поняла: «{command}». Скажите «запомни» или «где лежит»."
-        return "IDLE", {"items": items}, text
+        return "IDLE", session_data, text
 
 
 class AwaitingPlaceState(DialogState):
@@ -147,16 +150,19 @@ class AwaitingPlaceState(DialogState):
     ) -> tuple[str, dict[str, Any], str]:
         command = event.get("request", {}).get("command", "").strip()
         pending_thing = session_data.get("pending_thing", "")
-        items = dict(session_data.get("items", {}))
         state_visits = session_data.get("state_visits", 1)
+        user_id: str = session_data.get("user_id", "")
+
+        if not user_id:
+            return "IDLE", session_data, _NO_AUTH_TEXT
 
         # Если пользователь начал новое сохранение с полным набором слотов
         if intent == "SAVE" and slots.get("place"):
             thing = slots["thing"]
             place = slots["place"]
-            items[thing] = place
+            db.upsert_item(user_id, thing, place)
             text = f"Запомнила: {thing} — {place}."
-            return "IDLE", {"items": items}, text
+            return "IDLE", session_data, text
 
         # Если пользователь начал новое неполное сохранение
         if intent == "SAVE" and not slots.get("place"):
@@ -164,27 +170,24 @@ class AwaitingPlaceState(DialogState):
             session_data["dialog_state"] = "AWAITING_PLACE"
             session_data["pending_thing"] = new_thing
             session_data["state_visits"] = 1
-            session_data["items"] = items
             text = f"Где лежит {new_thing}? Скажите место."
             return "AWAITING_PLACE", session_data, text
 
         # Если пришла явная команда, прерывающая диалог
-        # Выполняем её через IdleState и возвращаемся в IDLE
         if intent in self._INTERRUPTING_INTENTS:
             idle = IdleState()
             next_state, updated_data, text = idle.handle(
                 event, session_data, intent, slots
             )
-            updated_data["items"] = items  # гарантируем актуальность items
             return next_state, updated_data, text
 
         # Текст не распознан как команда — по умолчанию считаем ответом
         # на вопрос "где лежит?". Если совсем короткий (менее 2 символов) —
         # переспросить с подсказкой.
         if pending_thing and len(command) >= 2:
-            items[pending_thing] = command
+            db.upsert_item(user_id, pending_thing, command)
             text = f"Запомнила: {pending_thing} — {command}."
-            return "IDLE", {"items": items}, text
+            return "IDLE", session_data, text
 
         # Пустой или слишком короткий ответ — переспросить
         if pending_thing:
@@ -203,7 +206,7 @@ class AwaitingPlaceState(DialogState):
             return "AWAITING_PLACE", session_data, text
 
         # Нет pending_thing — нестандартная ситуация, возврат в IDLE
-        return "IDLE", {"items": items}, "Не поняла. Начните заново."
+        return "IDLE", session_data, "Не поняла. Начните заново."
 
 
 STATE_REGISTRY: dict[str, type[DialogState]] = {
