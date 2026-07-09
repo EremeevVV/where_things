@@ -1,60 +1,33 @@
 from __future__ import annotations
 
-import json
-import re
+import logging
 from typing import Any
 
-from states import STATE_REGISTRY, build_response
+from nlu import parse_intent
+from states import STATE_REGISTRY, StateName, build_response
+from ydb_repository import YdbItemsRepository
+
+logger = logging.getLogger(__name__)
+
+_repo = YdbItemsRepository()
 
 
-def parse_intent(command: str) -> tuple[str, dict[str, str]]:
-    """Parse command text into (intent, slots).
+def _get_version(event: dict[str, Any]) -> str:
+    """Получить версию из event (единая точка дефолта)."""
+    return str(event.get("version", "1.0"))
 
-    Intents: SAVE, FIND, LIST, DELETE, UNKNOWN
-    """
-    c = command.strip().lower()
 
-    # LIST
-    if re.match(r"^(что\s+ты\s+помнишь|что\s+запомнено|список|все\s+вещи)", c):
-        return "LIST", {}
-
-    # SAVE: "запомни что X лежит Y" / "запомни X лежит Y"
-    m = re.match(r"^запомни,?\s*что\s+(.+?)\s+леж[иа]т\s+(.+)$", c)
-    if m:
-        return "SAVE", {"thing": m.group(1).strip(), "place": m.group(2).strip()}
-
-    m = re.match(r"^запомни\s+(.+?)\s+леж[иа]т\s+(.+)$", c)
-    if m:
-        return "SAVE", {"thing": m.group(1).strip(), "place": m.group(2).strip()}
-
-    # SAVE incomplete: "запомни что X" / "запомни X" (no place)
-    m = re.match(r"^запомни,?\s*что\s+(.+)$", c)
-    if m:
-        return "SAVE", {"thing": m.group(1).strip(), "place": ""}
-
-    m = re.match(r"^запомни\s+(.+)$", c)
-    if m:
-        return "SAVE", {"thing": m.group(1).strip(), "place": ""}
-
-    # FIND: "где лежит X" / "где X"
-    m = re.match(r"^где\s+леж[иа]т\s+(.+)$", c)
-    if m:
-        return "FIND", {"thing": m.group(1).strip()}
-
-    m = re.match(r"^где\s+(.+)$", c)
-    if m:
-        return "FIND", {"thing": m.group(1).strip()}
-
-    # DELETE: "забудь про X" / "забудь X"
-    m = re.match(r"^забудь\s+про\s+(.+)$", c)
-    if m:
-        return "DELETE", {"thing": m.group(1).strip()}
-
-    m = re.match(r"^забудь\s+(.+)$", c)
-    if m:
-        return "DELETE", {"thing": m.group(1).strip()}
-
-    return "UNKNOWN", {}
+def _fallback_response(event: dict[str, Any]) -> dict[str, Any]:
+    """Минимальный валидный ответ при необработанной ошибке."""
+    return {
+        "version": _get_version(event),
+        "session": event.get("session", {}),
+        "response": {
+            "text": "Извините, что-то пошло не так. Повторите, пожалуйста.",
+            "tts": "Извините, что-то пошло не так. Повторите, пожалуйста.",
+            "end_session": False,
+        },
+    }
 
 
 def handle_launch(event: dict[str, Any]) -> dict[str, Any]:
@@ -64,17 +37,15 @@ def handle_launch(event: dict[str, Any]) -> dict[str, Any]:
         "Скажите: «запомни, что паспорт лежит в ящике», "
         "а потом: «где лежит паспорт?»"
     )
-    version = event.get("version", "1.0")
-    session = event.get("session", {})
     return {
-        "version": version,
-        "session": session,
+        "version": _get_version(event),
+        "session": event.get("session", {}),
         "response": {"text": text, "tts": text, "end_session": False},
     }
 
 
-def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
-    """Yandex Cloud Functions entry point."""
+def _handle(event: dict[str, Any], context: Any) -> dict[str, Any]:
+    """Основная логика обработки (без try/except)."""
     session = event.get("session", {})
     request = event.get("request", {})
     command = request.get("command", "").strip()
@@ -94,20 +65,39 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     session_data["user_id"] = user_id
 
     # Определяем текущее состояние
-    state_name = session_data.get("dialog_state", "IDLE")
-    state_class = STATE_REGISTRY.get(state_name, STATE_REGISTRY["IDLE"])
+    state_name_str = session_data.get("dialog_state", StateName.IDLE.value)
+    try:
+        state_name = StateName(state_name_str)
+    except ValueError:
+        logger.warning("unknown state name: %s, falling back to IDLE", state_name_str)
+        state_name = StateName.IDLE
+
+    state_class = STATE_REGISTRY[state_name]
     state = state_class()
+
+    logger.info(
+        "intent=%s state=%s cmd_len=%d user=%s",
+        intent.value,
+        state_name.value,
+        len(command),
+        user_id[:8] if user_id else "",
+    )
 
     # делаем копию session_data, чтобы состояния не мутировали оригинал
     next_state, updated_data, text = state.handle(
-        event, dict(session_data), intent, slots
+        event, dict(session_data), intent, slots, _repo
     )
 
     return build_response(event, updated_data, text, next_state)
 
 
-if __name__ == "__main__":
-    with open("test_data/launch.json") as f:
-        test_event = json.loads(f.read())
-    result = handler(test_event, None)
-    print(json.dumps(result, ensure_ascii=False, indent=2))
+def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
+    """Yandex Cloud Functions entry point.
+
+    Оборачивает _handle в try/except для устойчивости к багам.
+    """
+    try:
+        return _handle(event, context)
+    except Exception:
+        logger.exception("unhandled error in handler")
+        return _fallback_response(event)

@@ -3,7 +3,7 @@ from pathlib import Path
 
 from main import handler
 
-TEST_DATA = Path("test_data")
+TEST_DATA = Path(__file__).resolve().parent.parent / "test_data"
 
 
 def load_event(name: str) -> dict:

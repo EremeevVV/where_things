@@ -11,8 +11,11 @@ Stack: Python 3.14, Yandex Cloud Functions (webhook), YDB serverless.
 - `PROJECT_INSTRUCTIONS.md` — full project context, constraints, architecture decisions, iteration log. **Read this first.**
 - `KICKOFF_PROMPT.md` — iteration plan and current task.
 - `main.py` — handler (`handler(event, context)`) for Yandex Cloud Functions.
-- `states.py` — State pattern: `DialogState` ABC, `IdleState`, `AwaitingPlaceState`, `build_response()`.
-- `test_runner.py` — local simulator with timing and warnings.
+- `nlu.py` — NLU parser: `Intent` enum, `parse_intent()`.
+- `states.py` — State pattern: `DialogState` ABC, `StateName` enum, `IdleState`, `AwaitingPlaceState`, `build_response()`.
+- `repository.py` — `ItemsRepository` Protocol (interface).
+- `ydb_repository.py` — `YdbItemsRepository` (YDB implementation).
+- `memory_repository.py` — `InMemoryItemsRepository` (fake for tests).
 
 ## Commands
 
@@ -20,32 +23,30 @@ Stack: Python 3.14, Yandex Cloud Functions (webhook), YDB serverless.
 # Run handler directly (loads launch.json, prints response)
 uv run python main.py
 
-# Install deps (when dependencies are added)
+# Install deps
 uv sync
 
 # Add a dependency
 uv add <package>
 ```
 
-No linting or formatting configured yet.
-
 ## Local testing
 
 ```bash
-# Quick check — runs handler against sample events, prints responses
-uv run python test_handler.py
-
-# Single event only
-uv run python test_handler.py launch
-
-# Cloud Functions simulator — checks timing, warns on violations
-uv run python test_runner.py
-
 # pytest — full test suite
 uv run python -m pytest
 
 # Single test
 uv run python -m pytest tests/test_handler.py::TestLaunch::test_greeting_contains_hint -v
+
+# Manual test runner (all scenarios)
+uv run python tests/test_handler_manual.py
+
+# Manual test runner (single scenario)
+uv run python tests/test_handler_manual.py launch
+
+# Cloud Functions simulator — checks timing, warns on violations
+uv run python tests/test_runner.py
 
 # Linting
 uv run python -m ruff check .
@@ -58,6 +59,22 @@ uv run python -m mypy main.py --ignore-missing-imports --strict
 ```
 
 Sample events live in `test_data/`. Edit or add JSON files there to test new scenarios. Fixtures in `tests/conftest.py` load them by name.
+
+## Tests and test infrastructure
+
+All test files and test utilities MUST live in the `tests/` folder. Never place test files in the project root.
+
+```
+tests/
+├── conftest.py                  # pytest fixtures
+├── test_handler.py              # unit tests for handler and parse_intent
+├── test_handler_manual.py       # manual test runner (invoked via CLI)
+├── test_runner.py               # Cloud Functions simulator with timing checks
+├── test_states_with_repo.py     # integration tests with InMemoryItemsRepository
+└── test_ydb.py                  # YDB integration tests (skipped without env vars)
+```
+
+If you create a new test file, place it in `tests/`. If you create a new test utility (runner, simulator, fixture loader), place it in `tests/` as well.
 
 ## Platform constraints (non-obvious)
 
