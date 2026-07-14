@@ -75,10 +75,10 @@
 ## 8. Как мы ведём разработку (важно)
 
 Реализация почти наверняка не зайдёт с первой попытки. Поэтому:
-- Работаем **итерациями**: одна итерация = одна проверяемая цель (эхо-навык → сохранение одной вещи → поиск → машина состояний → YDB → крайние случаи).
+- Работаем **итерациями**: одна итерация = одна проверяемая цель (эхо-навык → сохранение одной вещи → поиск → машина состояний → YDB → repository pattern → чистый main.py → NLU-парсер).
 - После каждой итерации фиксируем в разделе 9 «Журнал»: что сделали, что сломалось, что меняем.
 - Любое новое архитектурное решение записываем в этот файл, чтобы не потерять между сессиями.
-- Код держим обозримым: один файл-обработчик, явные функции `handle_save`, `handle_find`, `handle_list`, `handle_delete`, парсер NLU отдельно.
+- Код держим обозримым: `main.py` — тонкий entry point, `nlu.py` — парсер, `states.py` — машина состояний, `repository.py` — интерфейс хранилища, `ydb_repository.py` — YDB-реализация.
 
 ## 9. Журнал итераций (заполняется по ходу)
 
@@ -86,6 +86,10 @@
 - Итерация 1 — минимальный обработчик + эхо/приветствие, проверка на вкладке Тестирование. Статус: готово.
 - Итерация 2 — NLU-парсер (SAVE/FIND/LIST/DELETE/UNKNOWN), сохранение/поиск в `session_state`, тесты (24 passed). Статус: готово.
 - Итерация 3 — машина состояний (State pattern). Рефакторинг main.py: вынесены состояния в `states.py`. Два состояния: `IdleState` (обычный режим) и `AwaitingPlaceState` (ожидание места для неполного сохранения). Счётчик `state_visits` для эскалации подсказок. При прерывании диалога другой командой (FIND/DELETE/LIST) — выполняем её и возвращаемся в IDLE. `parse_intent` переиспользуется, не дублируется. 39 тестов (ruff + mypy + pytest — все pass). Статус: готово.
+- Итерация 4 — Repository pattern для хранения. Выделен интерфейс `ItemsRepository` (Protocol) в `repository.py`. `db.py` → `ydb_repository.py` (`YdbItemsRepository`). Создан `memory_repository.py` (`InMemoryItemsRepository`) для тестов. `states.py` принимает `repo` через параметр `handle()`, не импортирует хранилище напрямую. `main.py` — единственная точка инъекции (`_repo = YdbItemsRepository()`). 53 теста. Статус: готово.
+- Итерация 5 — Чистый main.py + типизация. `parse_intent` вынесен в `nlu.py` с `Intent(StrEnum)`. `StateName(StrEnum)` в `states.py` — голые строки заменены на enum. `handler()` обёрнут в try/except с `_fallback_response()` — навык не падает при необработанных исключениях. DRY: `_get_version(event)` единая точка дефолта. Логирование через `logging` (intent, state, cmd_len, user_id[:8] — без PII). Smoke test удалён из `main.py`. Тестовая инфраструктура перенесена в `tests/` (test_handler_manual.py, test_runner.py). 54 теста. Статус: готово.
+- Итерация 6 — Переход на aliceio + интенты Яндекс Диалогов. Полный переход на фреймворк `aliceio` (Dispatcher, Router, FSM, Middleware). Удалены `nlu.py` (regex-парсер) и `states.py` (hand-rolled FSM). NLU делегировано платформе: интенты `save`/`find`/`list`/`delete` с слотами `thing`/`place` определены в консоли Диалогов. FSM через `StatesGroup`/`State` из aliceio. Middleware проверки авторизации. Типизированные `Message`/`AliceResponse` вместо raw dict. `main.py` — 26 строк (Dispatcher + YCF handler). Интеграция с YDB через DI. 26 тестов (ruff + mypy + pytest — все pass). Статус: готово.
+- Итерация 7 — Расширение репозитория + поведение хэндлеров. `ItemsRepository` (Protocol): +`search_items` (подстрочный поиск, case-insensitive), +`list_names` (только имена), +`item_exists` (проверка существования). `InMemoryItemsRepository` и `YdbItemsRepository` реализуют все 6 методов. FIND: подстрочный поиск через `search_items` — если 1 совпадение → ответ, если >1 → «Найдено несколько: ...». LIST: показывает только имена через `list_names` — «У вас есть: паспорт, ключи.» SAVE: проверка `item_exists` перед сохранением — если вещь уже есть → FSM `awaiting_confirmation` → переспрос «Обновить местоположение?» → да/нет. FSM `SaveForm`: `awaiting_place`, `awaiting_confirmation`. 45 тестов (ruff + mypy + pytest — все pass). Статус: готово.
 - ...
 
 ## 10. Открытые вопросы (решить по ходу)

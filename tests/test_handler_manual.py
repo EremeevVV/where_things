@@ -1,38 +1,104 @@
+"""Ручной запуск сценариев.
+
+Запуск:
+    uv run --no-sync python tests/test_handler_manual.py
+    uv run --no-sync python tests/test_handler_manual.py launch
+"""
+
+from __future__ import annotations
+
+import asyncio
 import json
+import sys
 from pathlib import Path
 
-from main import handler
+_project_root = str(Path(__file__).resolve().parent.parent)
+if _project_root not in sys.path:
+    sys.path.insert(0, _project_root)
+
+from aliceio.types import NLU, Application, Message, Session, User  # noqa: E402
+
+from src.handlers import (  # noqa: E402
+    handle_delete,
+    handle_find,
+    handle_launch,
+    handle_list,
+    handle_save,
+)
+from src.memory_repository import InMemoryItemsRepository  # noqa: E402
 
 TEST_DATA = Path(__file__).resolve().parent.parent / "test_data"
+_REPO = InMemoryItemsRepository()
 
 
 def load_event(name: str) -> dict:
     return json.loads((TEST_DATA / f"{name}.json").read_text(encoding="utf-8"))
 
 
-def run_all():
-    scenarios = [
-        "launch", "save_item", "save_multiword", "save_incomplete",
-        "find_item", "find_unknown", "list_items", "delete_item",
-    ]
-    for name in scenarios:
-        event = load_event(name)
-        print(f"\n{'=' * 40}")
-        print(f"  {name}")
-        print(f"{'=' * 40}")
-        result = handler(event, None)
-        print(json.dumps(result, ensure_ascii=False, indent=2))
+def _event_to_message(event: dict) -> Message:
+    session_data = event.get("session", {})
+    request = event.get("request", {})
+    nlu_data = request.get("nlu", {})
+
+    user_data = session_data.get("user")
+    has_user = user_data and user_data.get("user_id")
+    user = User(user_id=user_data["user_id"]) if has_user else None
+    app_id = session_data.get("application", {}).get(
+        "application_id", "test"
+    )
+    app = Application(application_id=app_id)
+    session = Session(
+        message_id=session_data.get("message_id", 1),
+        session_id=session_data.get("session_id", "test"),
+        skill_id=session_data.get("skill_id", "test"),
+        application=app,
+        new=session_data.get("new", False),
+        user=user,
+    )
+    nlu = NLU(
+        tokens=nlu_data.get("tokens", []),
+        entities=nlu_data.get("entities", []),
+        intents=nlu_data.get("intents", {}),
+    )
+    return Message(
+        session=session,
+        type=request.get("type", "SimpleUtterance"),
+        command=request.get("command", ""),
+        original_utterance=request.get("original_utterance", ""),
+        nlu=nlu,
+    )
 
 
-def run_one(name: str):
+SCENARIOS = {
+    "launch": lambda m: handle_launch(m),
+    "save_item": lambda m: handle_save(m, None, _REPO),
+    "save_multiword": lambda m: handle_save(m, None, _REPO),
+    "save_incomplete": lambda m: handle_save(m, None, _REPO),
+    "find_item": lambda m: handle_find(m, _REPO),
+    "find_unknown": lambda m: handle_find(m, _REPO),
+    "list_items": lambda m: handle_list(m, _REPO),
+    "delete_item": lambda m: handle_delete(m, _REPO),
+}
+
+
+def run_all() -> None:
+    for name in SCENARIOS:
+        run_one(name)
+
+
+def run_one(name: str) -> None:
+    handler_fn = SCENARIOS.get(name)
+    if handler_fn is None:
+        print(f"Unknown: {name}")
+        print(f"Available: {', '.join(SCENARIOS)}")
+        return
     event = load_event(name)
-    result = handler(event, None)
-    print(json.dumps(result, ensure_ascii=False, indent=2))
+    msg = _event_to_message(event)
+    result = asyncio.run(handler_fn(msg))
+    print(json.dumps({"text": result.response.text}, ensure_ascii=False, indent=2))
 
 
 if __name__ == "__main__":
-    import sys
-
     if len(sys.argv) > 1:
         run_one(sys.argv[1])
     else:

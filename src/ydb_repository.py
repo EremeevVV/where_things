@@ -36,6 +36,23 @@ DECLARE $name AS Utf8;
 DELETE FROM items WHERE user_id = $user_id AND name = $name;
 """
 
+SEARCH_SQL = """
+DECLARE $user_id AS Utf8;
+DECLARE $query AS Utf8;
+SELECT name FROM items WHERE user_id = $user_id AND name LIKE '%' || $query || '%';
+"""
+
+LIST_NAMES_SQL = """
+DECLARE $user_id AS Utf8;
+SELECT name FROM items WHERE user_id = $user_id;
+"""
+
+EXISTS_SQL = """
+DECLARE $user_id AS Utf8;
+DECLARE $name AS Utf8;
+SELECT 1 AS exists_flag FROM items WHERE user_id = $user_id AND name = $name LIMIT 1;
+"""
+
 
 def _ensure_pool() -> ydb.QuerySessionPool | None:
     """Lazily initialize driver and pool on first call."""
@@ -136,3 +153,66 @@ class YdbItemsRepository:
             print(f"[db] delete OK: {user_id} / {name}")
         except Exception as e:
             print(f"[db] delete FAILED: {user_id} / {name} — {e}")
+
+    def search_items(self, user_id: str, query: str) -> list[str]:
+        """Find item names matching a substring (case-insensitive via YDB LIKE)."""
+        pool = _ensure_pool()
+        if pool is None:
+            print(f"[db] search SKIPPED (no pool): {user_id} / {query}")
+            return []
+
+        try:
+            result_sets = pool.execute_with_retries(
+                SEARCH_SQL,
+                {
+                    "$user_id": ydb.TypedValue(user_id, ydb.PrimitiveType.Utf8),
+                    "$query": ydb.TypedValue(query, ydb.PrimitiveType.Utf8),
+                },
+            )
+            names = [row.name for row in result_sets[0].rows]
+            print(f"[db] search OK: {user_id} / {query}, count={len(names)}")
+            return names
+        except Exception as e:
+            print(f"[db] search FAILED: {user_id} / {query} — {e}")
+            return []
+
+    def list_names(self, user_id: str) -> list[str]:
+        """Return only item names for a user."""
+        pool = _ensure_pool()
+        if pool is None:
+            print(f"[db] list_names SKIPPED (no pool): {user_id}")
+            return []
+
+        try:
+            result_sets = pool.execute_with_retries(
+                LIST_NAMES_SQL,
+                {"$user_id": ydb.TypedValue(user_id, ydb.PrimitiveType.Utf8)},
+            )
+            names = [row.name for row in result_sets[0].rows]
+            print(f"[db] list_names OK: {user_id}, count={len(names)}")
+            return names
+        except Exception as e:
+            print(f"[db] list_names FAILED: {user_id} — {e}")
+            return []
+
+    def item_exists(self, user_id: str, name: str) -> bool:
+        """Check if an exact item name exists for a user."""
+        pool = _ensure_pool()
+        if pool is None:
+            print(f"[db] exists SKIPPED (no pool): {user_id} / {name}")
+            return False
+
+        try:
+            result_sets = pool.execute_with_retries(
+                EXISTS_SQL,
+                {
+                    "$user_id": ydb.TypedValue(user_id, ydb.PrimitiveType.Utf8),
+                    "$name": ydb.TypedValue(name, ydb.PrimitiveType.Utf8),
+                },
+            )
+            exists = len(result_sets[0].rows) > 0
+            print(f"[db] exists OK: {user_id} / {name} = {exists}")
+            return exists
+        except Exception as e:
+            print(f"[db] exists FAILED: {user_id} / {name} — {e}")
+            return False

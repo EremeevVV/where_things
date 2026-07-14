@@ -13,7 +13,7 @@ import os
 
 import pytest
 
-import ydb_repository
+from src import ydb_repository
 
 
 def _ydb_configured() -> bool:
