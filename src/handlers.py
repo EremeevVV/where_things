@@ -8,6 +8,7 @@ from aliceio.fsm.context import FSMContext
 from aliceio.fsm.state import State, StatesGroup
 from aliceio.types import AliceResponse, Message, Response, Update
 
+from src.nlu import DeleteIntent, FindIntent, SaveIntent
 from src.repository import ItemsRepository
 
 logger = logging.getLogger(__name__)
@@ -16,6 +17,8 @@ logger = logging.getLogger(__name__)
 
 
 class SaveForm(StatesGroup):
+    """FSM states for save flow."""
+
     awaiting_confirmation = State()
 
 
@@ -40,6 +43,7 @@ class AuthMiddleware(BaseMiddleware[Update]):
         event: Update,
         data: dict[str, Any],
     ) -> Any:
+        """Check authorization and block unauthorized users."""
         session = event.session
         if not session or not session.user:
             return AliceResponse(response=Response(text=_NO_AUTH_TEXT))
@@ -50,6 +54,7 @@ class AuthMiddleware(BaseMiddleware[Update]):
 
 
 def setup_handlers(dp: Dispatcher) -> None:
+    """Register handlers and middleware with the dispatcher."""
     dp.include_router(router)
     dp.update.outer_middleware(AuthMiddleware())
 
@@ -61,20 +66,12 @@ def _user_id(message: Message) -> str:
     return message.session.user.user_id if message.session.user else ""
 
 
-def _slot_value(message: Message, intent_name: str, slot_name: str) -> str:
-    """Extract slot value from Yandex Dialogs NLU intents."""
-    intents = message.nlu.intents if message.nlu else {}
-    intent = intents.get(intent_name, {})
-    slots = intent.get("slots", {})
-    slot = slots.get(slot_name, {})
-    return str(slot.get("value", ""))
-
-
 # ── Launch ────────────────────────────────────────────────────────────────────
 
 
 @router.message(F.session.new)
 async def handle_launch(message: Message) -> AliceResponse:
+    """Greet user on new session."""
     text = (
         "Привет! Я запоминаю, где лежат вещи. "
         "Скажите: «запомни, что паспорт лежит в ящике», "
@@ -87,60 +84,58 @@ async def handle_launch(message: Message) -> AliceResponse:
 
 
 @router.message(F.nlu.intents["save"])
-async def handle_save(
-    message: Message, state: FSMContext, repo: ItemsRepository
-) -> AliceResponse:
-    thing = _slot_value(message, "save", "thing")
-    place = _slot_value(message, "save", "place")
+async def handle_save(message: Message, state: FSMContext, repo: ItemsRepository) -> AliceResponse:
+    """Save or update an item."""
+    intent = SaveIntent.from_message(message)
+    if intent is None:
+        return AliceResponse(response=Response(text="Не распознала команду."))
+
+    thing = intent.thing
+    location = intent.location
+    verb = intent.verb
     user_id = _user_id(message)
 
-    if not place:
+    if not location:
         return AliceResponse(
             response=Response(
-                text="Не могу запомнить без места. "
-                "Скажите полную фразу: «запомни, что паспорт лежит в ящике»."
+                text="Не могу запомнить без места. Скажите полную фразу: «запомни, что паспорт лежит в ящике»."
             )
         )
 
     if repo.item_exists(user_id, thing):
         items = repo.load_items(user_id)
-        old_place = items.get(thing, "")
+        old_verb, old_location = items.get(thing, ("", ""))
         await state.set_state(SaveForm.awaiting_confirmation)
-        await state.update_data(pending_thing=thing, pending_place=place)
-        old_text = f" (сейчас: {old_place})" if old_place else ""
-        msg = (
-            f"{thing}{old_text} уже есть в базе. "
-            f"Обновить местоположение на «{place}»?"
+        await state.update_data(
+            pending_thing=thing,
+            pending_location=location,
+            pending_verb=verb,
         )
+        old_text = f" (сейчас: {old_verb} {old_location})" if old_location else ""
+        msg = f"{thing}{old_text} уже есть в базе. Обновить местоположение на «{verb} {location}»?"
         return AliceResponse(response=Response(text=msg))
 
-    repo.upsert_item(user_id, thing, place)
-    return AliceResponse(
-        response=Response(text=f"Запомнила: {thing} — {place}.")
-    )
+    repo.upsert_item(user_id, thing, location, verb)
+    return AliceResponse(response=Response(text=f"Запомнила: {thing} {verb} {location}."))
 
 
 # ── Save (AWAITING_CONFIRMATION) ─────────────────────────────────────────────
 
 
 @router.message(SaveForm.awaiting_confirmation)
-async def handle_confirmation(
-    message: Message, state: FSMContext, repo: ItemsRepository
-) -> AliceResponse:
+async def handle_confirmation(message: Message, state: FSMContext, repo: ItemsRepository) -> AliceResponse:
+    """Handle yes/no confirmation for updating an existing item."""
     data = await state.get_data()
     pending_thing = data.get("pending_thing", "")
-    pending_place = data.get("pending_place", "")
+    pending_location = data.get("pending_location", "")
+    pending_verb = data.get("pending_verb", "лежит")
     user_id = _user_id(message)
     intents = message.nlu.intents if message.nlu else {}
 
     if "YANDEX.CONFIRM" in intents:
         await state.clear()
-        repo.upsert_item(user_id, pending_thing, pending_place)
-        return AliceResponse(
-            response=Response(
-                text=f"Обновила: {pending_thing} — {pending_place}."
-            )
-        )
+        repo.upsert_item(user_id, pending_thing, pending_location, pending_verb)
+        return AliceResponse(response=Response(text=f"Обновила: {pending_thing} {pending_verb} {pending_location}."))
 
     if "YANDEX.REJECT" in intents:
         await state.clear()
@@ -155,9 +150,8 @@ async def handle_confirmation(
 @router.message(SaveForm.awaiting_confirmation, F.nlu.intents["find"])
 @router.message(SaveForm.awaiting_confirmation, F.nlu.intents["delete"])
 @router.message(SaveForm.awaiting_confirmation, F.nlu.intents["list"])
-async def handle_interrupt(
-    message: Message, state: FSMContext
-) -> None:
+async def handle_interrupt(message: Message, state: FSMContext) -> None:
+    """Clear FSM state when user switches to another intent."""
     await state.clear()
 
 
@@ -165,68 +159,59 @@ async def handle_interrupt(
 
 
 @router.message(F.nlu.intents["find"])
-async def handle_find(
-    message: Message, repo: ItemsRepository
-) -> AliceResponse:
-    thing = _slot_value(message, "find", "thing")
+async def handle_find(message: Message, repo: ItemsRepository) -> AliceResponse:
+    """Search for items matching a query."""
+    intent = FindIntent.from_message(message)
+    if intent is None:
+        return AliceResponse(response=Response(text="Не распознала команду."))
+
+    thing = intent.thing
     user_id = _user_id(message)
     matches = repo.search_items(user_id, thing)
 
     if not matches:
-        return AliceResponse(
-            response=Response(text=f"Я не знаю, где лежит {thing}.")
-        )
+        return AliceResponse(response=Response(text=f"Я не знаю, где лежит {thing}."))
 
     if len(matches) == 1:
         name = matches[0]
         items = repo.load_items(user_id)
-        place = items.get(name, "")
-        return AliceResponse(
-            response=Response(text=f"{name.capitalize()} — {place}.")
-        )
+        verb, location = items.get(name, ("лежит", ""))
+        return AliceResponse(response=Response(text=f"{name.capitalize()} {verb} {location}."))
 
     names = ", ".join(matches)
-    return AliceResponse(
-        response=Response(
-            text=f"Найдено несколько: {names}. Уточните, что ищете."
-        )
-    )
+    return AliceResponse(response=Response(text=f"Найдено несколько: {names}. Уточните, что ищете."))
 
 
 # ── List ──────────────────────────────────────────────────────────────────────
 
 
 @router.message(F.nlu.intents["list"])
-async def handle_list(
-    message: Message, repo: ItemsRepository
-) -> AliceResponse:
+async def handle_list(message: Message, repo: ItemsRepository) -> AliceResponse:
+    """List all saved item names."""
     user_id = _user_id(message)
     names = repo.list_names(user_id)
     if not names:
-        return AliceResponse(
-            response=Response(text="Я пока ничего не помню.")
-        )
-    return AliceResponse(
-        response=Response(text="У вас есть: " + ", ".join(names) + ".")
-    )
+        return AliceResponse(response=Response(text="Я пока ничего не помню."))
+    return AliceResponse(response=Response(text="У вас есть: " + ", ".join(names) + "."))
 
 
 # ── Delete ────────────────────────────────────────────────────────────────────
 
 
 @router.message(F.nlu.intents["delete"])
-async def handle_delete(
-    message: Message, repo: ItemsRepository
-) -> AliceResponse:
-    thing = _slot_value(message, "delete", "thing")
+async def handle_delete(message: Message, repo: ItemsRepository) -> AliceResponse:
+    """Delete an item by name."""
+    intent = DeleteIntent.from_message(message)
+    if intent is None:
+        return AliceResponse(response=Response(text="Не распознала команду."))
+
+    thing = intent.thing
     user_id = _user_id(message)
     items = repo.load_items(user_id)
     if thing in items:
         repo.delete_item(user_id, thing)
         return AliceResponse(response=Response(text=f"Забыла про {thing}."))
-    return AliceResponse(
-        response=Response(text=f"У меня нет воспоминаний про {thing}.")
-    )
+    return AliceResponse(response=Response(text=f"У меня нет воспоминаний про {thing}."))
 
 
 # ── Unknown ───────────────────────────────────────────────────────────────────
@@ -234,10 +219,6 @@ async def handle_delete(
 
 @router.message()
 async def handle_unknown(message: Message) -> AliceResponse:
+    """Fallback for unrecognized commands."""
     command = message.command.strip() if message.command else ""
-    return AliceResponse(
-        response=Response(
-            text=f"Не поняла: «{command}». "
-            "Скажите «запомни» или «где лежит»."
-        )
-    )
+    return AliceResponse(response=Response(text=f"Не поняла: «{command}». Скажите «запомни» или «где лежит»."))

@@ -68,6 +68,12 @@ uv run --no-sync python tests/test_runner.py
 # Auto-fix linting issues
 .venv\Scripts\python.exe -m ruff check . --fix
 
+# Code formatting
+.venv\Scripts\python.exe -m ruff format .
+
+# WPS style checks
+.venv\Scripts\python.exe -m flake8 --select=WPS .
+
 # Type checking
 .venv\Scripts\python.exe -m mypy main.py --ignore-missing-imports --strict
 ```
@@ -104,11 +110,13 @@ Work in iterations per `KICKOFF_PROMPT.md`. After each iteration, update the ite
 After every code change, run the full verification pipeline and fix all issues before finishing:
 
 ```bash
-.venv\Scripts\python.exe -m ruff check . --fix && .venv\Scripts\python.exe -m mypy main.py --ignore-missing-imports --strict && .venv\Scripts\python.exe -m pytest -v
+.venv\Scripts\python.exe -m ruff format . && .venv\Scripts\python.exe -m ruff check . --fix && .venv\Scripts\python.exe -m flake8 --select=WPS . && .venv\Scripts\python.exe -m mypy main.py --ignore-missing-imports --strict && .venv\Scripts\python.exe -m pytest -v
 ```
 
-1. **ruff** — linting + auto-fix
-2. **mypy** — static type checking
-3. **pytest** — test suite
+1. **ruff format** — code formatting
+2. **ruff check --fix** — linting + auto-fix
+3. **flake8 --select=WPS** — WPS style checks
+4. **mypy** — static type checking
+5. **pytest** — test suite
 
-All three must pass with zero errors. If any step fails, fix the issues and re-run.
+All five must pass with zero errors. If any step fails, fix the issues and re-run.

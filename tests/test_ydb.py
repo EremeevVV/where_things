@@ -31,15 +31,18 @@ class TestYDBConnection:
 
     @requires_ydb
     def test_driver_initializes(self):
+        """Driver should initialize successfully."""
         pool = ydb_repository._ensure_pool()
         assert pool is not None, "Session pool should be created"
 
     @requires_ydb
     def test_is_available(self):
+        """YDB should be available."""
         assert ydb_repository.is_available(), "YDB should be available"
 
     @requires_ydb
     def test_simple_query(self):
+        """Simple query should return results."""
         pool = ydb_repository._ensure_pool()
         assert pool is not None
         result = pool.execute_with_retries("SELECT 1 AS test_value")
@@ -53,6 +56,7 @@ class TestYDBTable:
 
     @requires_ydb
     def test_upsert_and_load(self):
+        """Upsert and load an item."""
         repo = ydb_repository.YdbItemsRepository()
         repo.upsert_item(self.TEST_USER, "test_thing", "test_place")
         items = repo.load_items(self.TEST_USER)
@@ -61,6 +65,7 @@ class TestYDBTable:
 
     @requires_ydb
     def test_upsert_updates(self):
+        """Upsert should update existing item."""
         repo = ydb_repository.YdbItemsRepository()
         repo.upsert_item(self.TEST_USER, "test_thing", "new_place")
         items = repo.load_items(self.TEST_USER)
@@ -68,12 +73,14 @@ class TestYDBTable:
 
     @requires_ydb
     def test_load_empty_user(self):
+        """Load items for empty user."""
         repo = ydb_repository.YdbItemsRepository()
         items = repo.load_items("__nonexistent_user_12345__")
         assert items == {}
 
     @requires_ydb
     def test_delete(self):
+        """Delete an item."""
         repo = ydb_repository.YdbItemsRepository()
         repo.upsert_item(self.TEST_USER, "to_delete", "somewhere")
         repo.delete_item(self.TEST_USER, "to_delete")
@@ -82,6 +89,7 @@ class TestYDBTable:
 
     @requires_ydb
     def test_multiple_items(self):
+        """Handle multiple items."""
         repo = ydb_repository.YdbItemsRepository()
         repo.upsert_item(self.TEST_USER, "item_a", "place_a")
         repo.upsert_item(self.TEST_USER, "item_b", "place_b")
@@ -97,6 +105,7 @@ class TestYDBWithoutEnv:
     """Проверка поведения без YDB (локальная разработка)."""
 
     def test_is_available_returns_false(self):
+        """is_available should return False without YDB config."""
         old_ep = ydb_repository.YDB_ENDPOINT
         old_db = ydb_repository.YDB_DATABASE
         ydb_repository.YDB_ENDPOINT = ""
@@ -112,6 +121,7 @@ class TestYDBWithoutEnv:
             ydb_repository._pool = old_pool
 
     def test_load_items_returns_empty(self):
+        """load_items should return empty dict without YDB config."""
         old_ep = ydb_repository.YDB_ENDPOINT
         old_db = ydb_repository.YDB_DATABASE
         ydb_repository.YDB_ENDPOINT = ""

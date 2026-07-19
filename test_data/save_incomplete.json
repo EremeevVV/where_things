@@ -20,7 +20,14 @@
     "nlu": {
       "tokens": ["запомни", "что", "паспорт"],
       "entities": [],
-      "intents": {}
+      "intents": {
+        "save": {
+          "slots": {
+            "thing": { "value": "паспорт" },
+            "place": { "value": "" }
+          }
+        }
+      }
     },
     "type": "SimpleUtterance"
   },

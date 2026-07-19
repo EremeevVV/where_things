@@ -20,7 +20,13 @@
     "nlu": {
       "tokens": ["забудь", "про", "паспорт"],
       "entities": [],
-      "intents": {}
+      "intents": {
+        "delete": {
+          "slots": {
+            "thing": { "value": "ключи" }
+          }
+        }
+      }
     },
     "type": "SimpleUtterance"
   },
@@ -28,8 +34,9 @@
     "session": {
       "dialog_state": "AWAITING_PLACE",
       "pending_thing": "ключи",
-      "state_visits": 1,
-      "items": {}
+      "pending_location": "на полке",
+      "pending_verb": "лежит",
+      "state_visits": 1
     },
     "user": {},
     "application": {}

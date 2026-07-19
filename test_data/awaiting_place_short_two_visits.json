@@ -28,8 +28,9 @@
     "session": {
       "dialog_state": "AWAITING_PLACE",
       "pending_thing": "паспорт",
-      "state_visits": 2,
-      "items": {}
+      "pending_location": "в ящике",
+      "pending_verb": "лежит",
+      "state_visits": 2
     },
     "user": {},
     "application": {}

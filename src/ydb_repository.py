@@ -19,15 +19,16 @@ YDB_DATABASE = os.getenv("YDB_DATABASE", "")
 UPSERT_SQL = """
 DECLARE $user_id AS Utf8;
 DECLARE $name AS Utf8;
-DECLARE $place AS Utf8;
+DECLARE $location AS Utf8;
+DECLARE $verb AS Utf8;
 DECLARE $updated_at AS Timestamp;
-UPSERT INTO items (user_id, name, place, updated_at)
-VALUES ($user_id, $name, $place, $updated_at);
+UPSERT INTO items (user_id, name, location, verb, updated_at)
+VALUES ($user_id, $name, $location, $verb, $updated_at);
 """
 
 SELECT_ALL_SQL = """
 DECLARE $user_id AS Utf8;
-SELECT name, place FROM items WHERE user_id = $user_id;
+SELECT name, location, verb FROM items WHERE user_id = $user_id;
 """
 
 DELETE_SQL = """
@@ -39,7 +40,7 @@ DELETE FROM items WHERE user_id = $user_id AND name = $name;
 SEARCH_SQL = """
 DECLARE $user_id AS Utf8;
 DECLARE $query AS Utf8;
-SELECT name FROM items WHERE user_id = $user_id AND name LIKE '%' || $query || '%';
+SELECT name FROM items WHERE user_id = $user_id AND Unicode::ToLower(name) = Unicode::ToLower($query);
 """
 
 LIST_NAMES_SQL = """
@@ -75,11 +76,12 @@ def _ensure_pool() -> ydb.QuerySessionPool | None:
         )
         _driver.wait(fail_fast=True, timeout=5)
         _pool = ydb.QuerySessionPool(_driver)
-        print("[db] YDB pool initialized")
-        return _pool
     except Exception as e:
         print(f"[db] FAILED to init YDB: {e}")
         return None
+    else:
+        print("[db] YDB pool initialized")
+        return _pool
 
 
 def is_available() -> bool:
@@ -90,7 +92,7 @@ def is_available() -> bool:
 class YdbItemsRepository:
     """Реализация ItemsRepository на YDB."""
 
-    def upsert_item(self, user_id: str, name: str, place: str) -> None:
+    def upsert_item(self, user_id: str, name: str, location: str, verb: str) -> None:
         """Save or update an item in YDB."""
         pool = _ensure_pool()
         if pool is None:
@@ -103,19 +105,20 @@ class YdbItemsRepository:
                 {
                     "$user_id": ydb.TypedValue(user_id, ydb.PrimitiveType.Utf8),
                     "$name": ydb.TypedValue(name, ydb.PrimitiveType.Utf8),
-                    "$place": ydb.TypedValue(place, ydb.PrimitiveType.Utf8),
+                    "$location": ydb.TypedValue(location, ydb.PrimitiveType.Utf8),
+                    "$verb": ydb.TypedValue(verb, ydb.PrimitiveType.Utf8),
                     "$updated_at": ydb.TypedValue(
                         datetime.datetime.now(datetime.UTC),
                         ydb.PrimitiveType.Timestamp,
                     ),
                 },
             )
-            print(f"[db] upsert OK: {user_id} / {name} = {place}")
+            print(f"[db] upsert OK: {user_id} / {name} = {verb} {location}")
         except Exception as e:
             print(f"[db] upsert FAILED: {user_id} / {name} — {e}")
 
-    def load_items(self, user_id: str) -> dict[str, str]:
-        """Load all items for a user from YDB."""
+    def load_items(self, user_id: str) -> dict[str, tuple[str, str]]:
+        """Load all items for a user from YDB. Returns {name: (verb, location)}."""
         pool = _ensure_pool()
         if pool is None:
             print(f"[db] load SKIPPED (no pool): {user_id}")
@@ -126,14 +129,15 @@ class YdbItemsRepository:
                 SELECT_ALL_SQL,
                 {"$user_id": ydb.TypedValue(user_id, ydb.PrimitiveType.Utf8)},
             )
-            items: dict[str, str] = {}
+            result_items: dict[str, tuple[str, str]] = {}
             for row in result_sets[0].rows:
-                items[row.name] = row.place
-            print(f"[db] load OK: {user_id}, count={len(items)}")
-            return items
+                result_items[row.name] = (row.verb, row.location)
         except Exception as e:
             print(f"[db] load FAILED: {user_id} — {e}")
             return {}
+        else:
+            print(f"[db] load OK: {user_id}, count={len(result_items)}")
+            return result_items
 
     def delete_item(self, user_id: str, name: str) -> None:
         """Delete a single item from YDB."""
@@ -155,7 +159,7 @@ class YdbItemsRepository:
             print(f"[db] delete FAILED: {user_id} / {name} — {e}")
 
     def search_items(self, user_id: str, query: str) -> list[str]:
-        """Find item names matching a substring (case-insensitive via YDB LIKE)."""
+        """Find item names matching exactly (case-insensitive)."""
         pool = _ensure_pool()
         if pool is None:
             print(f"[db] search SKIPPED (no pool): {user_id} / {query}")
@@ -170,11 +174,12 @@ class YdbItemsRepository:
                 },
             )
             names = [row.name for row in result_sets[0].rows]
-            print(f"[db] search OK: {user_id} / {query}, count={len(names)}")
-            return names
         except Exception as e:
             print(f"[db] search FAILED: {user_id} / {query} — {e}")
             return []
+        else:
+            print(f"[db] search OK: {user_id} / {query}, count={len(names)}")
+            return names
 
     def list_names(self, user_id: str) -> list[str]:
         """Return only item names for a user."""
@@ -189,11 +194,12 @@ class YdbItemsRepository:
                 {"$user_id": ydb.TypedValue(user_id, ydb.PrimitiveType.Utf8)},
             )
             names = [row.name for row in result_sets[0].rows]
-            print(f"[db] list_names OK: {user_id}, count={len(names)}")
-            return names
         except Exception as e:
             print(f"[db] list_names FAILED: {user_id} — {e}")
             return []
+        else:
+            print(f"[db] list_names OK: {user_id}, count={len(names)}")
+            return names
 
     def item_exists(self, user_id: str, name: str) -> bool:
         """Check if an exact item name exists for a user."""
@@ -211,8 +217,9 @@ class YdbItemsRepository:
                 },
             )
             exists = len(result_sets[0].rows) > 0
-            print(f"[db] exists OK: {user_id} / {name} = {exists}")
-            return exists
         except Exception as e:
             print(f"[db] exists FAILED: {user_id} / {name} — {e}")
             return False
+        else:
+            print(f"[db] exists OK: {user_id} / {name} = {exists}")
+            return exists

@@ -4,18 +4,100 @@ version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.12"
-dependencies = ["ydb>=3.0.0", "aliceio>=0.2.0"]
+dependencies = [
+    "ydb>=3.0.0",
+    "aliceio>=0.2.0",
+    "pymorphy3>=2.0.6",
+]
 
 [dependency-groups]
 dev = [
     "mypy>=2.1.0",
     "pytest>=8.0",
     "ruff>=0.15.20",
+    "wemake-python-styleguide>=1.6.2",
 ]
 
 [tool.ruff]
-line-length = 88
-target-version = "py312"
+# preview = false (по умолчанию) — не включаем нестабильные правила ради предсказуемости CI
+target-version = "py312"   # поправьте под вашу минимальную версию Python
+line-length = 120
+fix = true
+
+[tool.ruff.format]
+quote-style = "double"
+docstring-code-format = true
 
 [tool.ruff.lint]
-select = ["E", "F", "W", "I", "UP", "B", "SIM"]
+select = [
+    "A",     # flake8-builtins — не затенять встроенные имена (list, id, type...)
+    "B",     # flake8-bugbear — частые баги и антипаттерны
+    "C4",    # flake8-comprehensions — идиоматичные comprehensions
+    "C90",   # mccabe — сложность функций
+    "COM",   # flake8-commas — висячие запятые
+    "D",     # pydocstyle — docstring style
+    "DTZ",   # flake8-datetimez — обязательный timezone у datetime
+    "E",     # pycodestyle errors
+    "ERA",   # flake8-eradicate — закомментированный мёртвый код
+    "EXE",   # flake8-executable — shebang/executable bit
+    "F",     # pyflakes — неиспользуемые импорты/переменные, логические ошибки
+    "FA",    # flake8-future-annotations
+    "FBT",   # flake8-boolean-trap — позиционные bool-аргументы
+    "FLY",   # pyflint — f-strings вместо .join и т.п.
+    "FURB",  # refurb — устаревшие идиомы
+    "G",     # flake8-logging-format — корректный logging
+    "I",     # isort — сортировка импортов
+    "ICN",   # flake8-import-conventions — общепринятые алиасы (np, pd...)
+    "ISC",   # flake8-implicit-str-concat
+    "LOG",   # flake8-logging
+    "N",     # pep8-naming
+    "PERF",  # perflint — проблемы производительности
+    "PIE",   # flake8-pie — разное упрощение кода
+    "PL",    # pylint (включает PLR0911/0912/0913/0915 — метрики сложности)
+    "PT",    # flake8-pytest-style
+    "PTH",   # flake8-use-pathlib — pathlib вместо os.path
+    "Q",     # flake8-quotes
+    "RET",   # flake8-return — лишние else/return
+    "RSE",   # flake8-raise
+    "RUF",   # правила самого ruff
+    "S",     # flake8-bandit — security
+    "SIM",   # flake8-simplify
+    "SLF",   # flake8-self — обращение к _private снаружи класса
+    "SLOT",  # flake8-slots
+    "T100",  # flake8-debugger — забытые pdb/breakpoint
+    "TRY",   # tryceratops — качество обработки исключений
+    "UP",    # pyupgrade — актуальный синтаксис Python
+    "W",     # pycodestyle warnings
+    "YTT",   # flake8-2020
+]
+
+ignore = [
+    "COM812",  # висячая запятая — конфликтует с ruff format
+    "ISC001",  # implicit string concat — конфликтует с ruff format
+    "D100",    # docstring в модуле — опционально
+    "D104",    # docstring в __init__.py — опционально
+    "D203",    # конфликтует с D211 (выбираем один стиль)
+    "D212",    # конфликтует с D213 (выбираем один стиль)
+    "PLR2004", # "magic value" — слишком шумное правило почти везде
+    "RUF001",
+    "RUF002",
+
+]
+
+[tool.ruff.lint.mccabe]
+max-complexity = 10   # общепринятый индустриальный дефолт; ужесточайте до 6-8 при желании
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"   # или "numpy" / "pep257" — на ваш выбор
+
+[tool.ruff.lint.pylint]
+max-args = 6            # PLR0913 — слишком много аргументов у функции
+max-branches = 12        # PLR0912 — слишком много ветвлений
+max-returns = 6          # PLR0911 — слишком много return
+max-statements = 50      # PLR0915 — слишком длинная функция
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*.py" = [
+    "S101",    # использование assert — нормально в тестах
+    "SLF001",  # обращение к приватным членам (_pool, _ensure_pool) — нужно для тестирования
+]

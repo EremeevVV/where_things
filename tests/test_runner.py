@@ -18,6 +18,9 @@ _project_root = str(Path(__file__).resolve().parent.parent)
 if _project_root not in sys.path:
     sys.path.insert(0, _project_root)
 
+from aliceio.fsm.context import FSMContext  # noqa: E402
+from aliceio.fsm.storage.base import StorageKey  # noqa: E402
+from aliceio.fsm.storage.memory import MemoryStorage  # noqa: E402
 from aliceio.types import NLU, Application, Message, Session, User  # noqa: E402
 
 from src.handlers import (  # noqa: E402
@@ -32,9 +35,11 @@ from src.memory_repository import InMemoryItemsRepository  # noqa: E402
 
 TEST_DATA = Path(__file__).resolve().parent.parent / "test_data"
 _REPO = InMemoryItemsRepository()
+_STORAGE = MemoryStorage()
 
 
 def load_event(name: str) -> dict:
+    """Load test event from JSON file."""
     path = TEST_DATA / f"{name}.json"
     if not path.exists():
         available = [f.stem for f in TEST_DATA.glob("*.json")]
@@ -52,9 +57,7 @@ def _event_to_message(event: dict) -> Message:
     user_data = session_data.get("user")
     has_user = user_data and user_data.get("user_id")
     user = User(user_id=user_data["user_id"]) if has_user else None
-    app_id = session_data.get("application", {}).get(
-        "application_id", "test"
-    )
+    app_id = session_data.get("application", {}).get("application_id", "test")
     app = Application(application_id=app_id)
     session = Session(
         message_id=session_data.get("message_id", 1),
@@ -78,16 +81,29 @@ def _event_to_message(event: dict) -> Message:
     )
 
 
+def _make_fsm(user_id: str = "test_user") -> FSMContext:
+    key = StorageKey(
+        skill_id="skill",
+        user_id=user_id,
+        session_id="sess",
+        application_id="test_app",
+    )
+    return FSMContext(storage=_STORAGE, key=key)
+
+
 def run_scenario(name: str) -> None:
+    """Run a single test scenario and print results."""
     event = load_event(name)
     msg = _event_to_message(event)
     start = time.perf_counter()
 
     intents = msg.nlu.intents if msg.nlu else {}
+    fsm = _make_fsm()
+
     if msg.session.new:
         result = asyncio.run(handle_launch(msg))
     elif "save" in intents:
-        result = asyncio.run(handle_save(msg, None, _REPO))
+        result = asyncio.run(handle_save(msg, fsm, _REPO))
     elif "find" in intents:
         result = asyncio.run(handle_find(msg, _REPO))
     elif "list" in intents:
@@ -121,9 +137,8 @@ def run_scenario(name: str) -> None:
 
 
 def main() -> None:
-    scenarios = sys.argv[1:] if len(sys.argv) > 1 else [
-        "launch", "save_item", "find_item", "list_items", "delete_item"
-    ]
+    """Run all test scenarios."""
+    scenarios = sys.argv[1:] if len(sys.argv) > 1 else ["launch", "save_item", "find_item", "list_items", "delete_item"]
     print("Yandex Cloud Functions local simulator")
     print(f"Running {len(scenarios)} scenario(s)...\n")
     for name in scenarios:

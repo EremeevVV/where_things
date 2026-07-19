@@ -20,7 +20,16 @@
     "nlu": {
       "tokens": ["запомни", "что", "телефон", "лежит", "в", "рюкзаке"],
       "entities": [],
-      "intents": {}
+      "intents": {
+        "save": {
+          "slots": {
+            "thing": { "value": "телефон" },
+            "place": { "value": "рюкзаке" },
+            "preposition": { "value": "в" },
+            "loc_verb": { "value": "лежит" }
+          }
+        }
+      }
     },
     "type": "SimpleUtterance"
   },
@@ -28,8 +37,9 @@
     "session": {
       "dialog_state": "AWAITING_PLACE",
       "pending_thing": "паспорт",
-      "state_visits": 1,
-      "items": {}
+      "pending_location": "в ящике",
+      "pending_verb": "лежит",
+      "state_visits": 1
     },
     "user": {},
     "application": {}

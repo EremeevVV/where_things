@@ -20,7 +20,13 @@
     "nlu": {
       "tokens": ["где", "лежит", "ключи"],
       "entities": [],
-      "intents": {}
+      "intents": {
+        "find": {
+          "slots": {
+            "thing": { "value": "ключи" }
+          }
+        }
+      }
     },
     "type": "SimpleUtterance"
   },
@@ -28,8 +34,9 @@
     "session": {
       "dialog_state": "AWAITING_PLACE",
       "pending_thing": "паспорт",
-      "state_visits": 1,
-      "items": {}
+      "pending_location": "в ящике",
+      "pending_verb": "лежит",
+      "state_visits": 1
     },
     "user": {},
     "application": {}

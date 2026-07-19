@@ -3,21 +3,14 @@
     "locale": "ru-RU",
     "timezone": "Europe/Moscow",
     "client_id": "ru.yandex.searchplugin/7.16 (none none; android 4.4.2)",
-    "interfaces": {
-      "screen": {}
-    }
+    "interfaces": { "screen": {} }
   },
   "session": {
     "message_id": 1,
     "session_id": "test_session",
     "skill_id": "test_skill",
-    "user": {
-      "user_id": "test_user",
-      "access_token": "test_token"
-    },
-    "application": {
-      "application_id": "test_app"
-    },
+    "user": { "user_id": "test_user", "access_token": "test_token" },
+    "application": { "application_id": "test_app" },
     "new": false
   },
   "request": {
@@ -27,14 +20,19 @@
     "nlu": {
       "tokens": ["запомни", "что", "паспорт", "лежит", "в", "верхнем", "ящике", "стола"],
       "entities": [],
-      "intents": {}
+      "intents": {
+        "save": {
+          "slots": {
+            "thing": { "value": "паспорт" },
+            "place": { "value": "верхнем ящике стола" },
+            "preposition": { "value": "в" },
+            "loc_verb": { "value": "лежит" }
+          }
+        }
+      }
     },
     "type": "SimpleUtterance"
   },
-  "state": {
-    "session": {},
-    "user": {},
-    "application": {}
-  },
+  "state": { "session": {}, "user": {}, "application": {} },
   "version": "1.0"
 }

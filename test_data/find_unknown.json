@@ -20,7 +20,13 @@
     "nlu": {
       "tokens": ["где", "лежит", "ключи"],
       "entities": [],
-      "intents": {}
+      "intents": {
+        "find": {
+          "slots": {
+            "thing": { "value": "ключи" }
+          }
+        }
+      }
     },
     "type": "SimpleUtterance"
   },

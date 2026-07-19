@@ -20,10 +20,16 @@
     "nlu": {
       "tokens": ["где", "лежит", "паспорт"],
       "entities": [],
-      "intents": {}
+      "intents": {
+        "find": {
+          "slots": {
+            "thing": { "value": "паспорт" }
+          }
+        }
+      }
     },
     "type": "SimpleUtterance"
   },
-  "state": { "session": { "items": { "паспорт": "верхний ящик стола" } }, "user": {}, "application": {} },
+  "state": { "session": {}, "user": {}, "application": {} },
   "version": "1.0"
 }

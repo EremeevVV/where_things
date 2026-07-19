@@ -20,7 +20,16 @@
     "nlu": {
       "tokens": ["запомни", "что", "зарядка", "лежит", "на", "полке", "у", "окна"],
       "entities": [],
-      "intents": {}
+      "intents": {
+        "save": {
+          "slots": {
+            "thing": { "value": "зарядка для телефона" },
+            "place": { "value": "полке у окна" },
+            "preposition": { "value": "на" },
+            "loc_verb": { "value": "лежит" }
+          }
+        }
+      }
     },
     "type": "SimpleUtterance"
   },
