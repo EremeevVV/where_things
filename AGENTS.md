@@ -105,6 +105,10 @@ Tests use `asyncio.run()` to call async handlers directly. Handlers receive `Mes
 
 Work in iterations per `KICKOFF_PROMPT.md`. After each iteration, update the iteration log in `PROJECT_INSTRUCTIONS.md` section 9. Use aliceio Dispatcher/Router pattern. Intents handled by Yandex Dialogs NLU.
 
+## Code style policy
+
+**Не добавлять исключения в `setup.cfg`.** Устранять проблемы в коде, а не глушить линтер. Если WPS/ruff ругается — рефакторить код до зелёного состояния, а не добавлять `WPSxxx` в per-file-ignores.
+
 ## Post-build verification
 
 After every code change, run the full verification pipeline and fix all issues before finishing:
