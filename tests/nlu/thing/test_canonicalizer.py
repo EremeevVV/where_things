@@ -16,8 +16,8 @@ class TestCanonicalizeBasic:
             adj_modifiers=(),
             noun_modifiers=(),
         )
-        result = canonicalize(td, CANONICAL_DICT)
-        assert result.canonical_head == "телефон"
+        actual = canonicalize(td, CANONICAL_DICT)
+        assert actual.canonical_head == "телефон"
 
     def test_word_not_in_dict(self):
         """Слова вне словаря возвращаются без изменений."""
@@ -27,8 +27,8 @@ class TestCanonicalizeBasic:
             adj_modifiers=(),
             noun_modifiers=(),
         )
-        result = canonicalize(td, CANONICAL_DICT)
-        assert result.canonical_head == "ключ"
+        actual = canonicalize(td, CANONICAL_DICT)
+        assert actual.canonical_head == "ключ"
 
     def test_noun_modifiers_canonicalized(self):
         """Именные модификаторы канонизируются поэлементно."""
@@ -38,8 +38,8 @@ class TestCanonicalizeBasic:
             adj_modifiers=(),
             noun_modifiers=("айфон",),
         )
-        result = canonicalize(td, CANONICAL_DICT)
-        assert result.canonical_noun_modifiers == ("телефон",)
+        actual = canonicalize(td, CANONICAL_DICT)
+        assert actual.canonical_noun_modifiers == ("телефон",)
 
     def test_adj_modifiers_not_canonicalized(self):
         """Прилагательные не канонизируются (ADR)."""
@@ -49,8 +49,8 @@ class TestCanonicalizeBasic:
             adj_modifiers=("зимний",),
             noun_modifiers=(),
         )
-        result = canonicalize(td, CANONICAL_DICT)
-        assert result.adj_modifiers == ("зимний",)
+        actual = canonicalize(td, CANONICAL_DICT)
+        assert actual.adj_modifiers == ("зимний",)
 
 
 class TestCanonicalizeIdempotency:
@@ -58,10 +58,10 @@ class TestCanonicalizeIdempotency:
 
     def test_idempotent_for_all_dict_values(self):
         """Canonicalize идемпотентен для всех значений словаря."""
-        for value in CANONICAL_DICT.values():
+        for canonical_form in CANONICAL_DICT.values():
             td = ThingDescriptor(
-                display=value,
-                detected_head=value,
+                display=canonical_form,
+                detected_head=canonical_form,
                 adj_modifiers=(),
                 noun_modifiers=(),
             )

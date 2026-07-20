@@ -7,13 +7,15 @@ from src.nlu.thing.canonicalizer import CanonicalThing
 
 MODIFIER_WEIGHT_NOUN = 0.7
 MODIFIER_WEIGHT_ADJ = 0.7
+NO_OVERLAP_SCORE = 0.0
 
 
-def canonical_key(t: CanonicalThing) -> str:
+def canonical_key(thing: CanonicalThing) -> str:
     """Построить ключ идентичности вещи для точного сравнения."""
-    all_mods = t.adj_modifiers + t.canonical_noun_modifiers
+    all_mods = thing.adj_modifiers + thing.canonical_noun_modifiers
     sorted_mods = sorted(all_mods)
-    return f"{t.canonical_head}#{','.join(sorted_mods)}"
+    joined = ",".join(sorted_mods)
+    return f"{thing.canonical_head}#{joined}"
 
 
 @dataclass(frozen=True)
@@ -25,49 +27,67 @@ class SearchResult:
     scores: tuple[float, ...] = ()
 
 
-def _overlap(a: tuple[str, ...], b: tuple[str, ...]) -> float:
-    """Overlap coefficient: |A∩B| / (min(|A|,|B|) + eps)."""
-    if not a or not b:
-        return 0.0
-    set_a, set_b = set(a), set(b)
+def _overlap(mods_a: tuple[str, ...], mods_b: tuple[str, ...]) -> float:
+    """Overlap coefficient: |A∩B| / min(|A|,|B|)."""
+    if not mods_a or not mods_b:
+        return NO_OVERLAP_SCORE
+    set_a, set_b = set(mods_a), set(mods_b)
     intersection = len(set_a & set_b)
     return intersection / min(len(set_a), len(set_b))
 
 
-def match(query: CanonicalThing, candidates: list[CanonicalThing]) -> SearchResult:
-    """Сопоставить запрос со списком кандидатов пользователя."""
-    query_key = canonical_key(query)
-    exact_matches = [c for c in candidates if canonical_key(c) == query_key]
-    if exact_matches:
-        return SearchResult(
-            status="exact",
-            matches=tuple(exact_matches),
-        )
-
-    same_head = [c for c in candidates if c.canonical_head == query.canonical_head]
-    if not same_head:
-        return SearchResult(status="empty", matches=())
-
+def _score_candidates(
+    query: CanonicalThing,
+    same_head: list[CanonicalThing],
+) -> list[tuple[CanonicalThing, float]]:
+    """Score candidates by modifier overlap."""
     scored: list[tuple[CanonicalThing, float]] = []
-    for c in same_head:
-        adj_score = _overlap(query.adj_modifiers, c.adj_modifiers)
-        noun_score = _overlap(query.canonical_noun_modifiers, c.canonical_noun_modifiers)
+    for cand in same_head:
+        adj_score = _overlap(query.adj_modifiers, cand.adj_modifiers)
+        noun_score = _overlap(query.canonical_noun_modifiers, cand.canonical_noun_modifiers)
         score = adj_score * MODIFIER_WEIGHT_ADJ + noun_score * MODIFIER_WEIGHT_NOUN
-        scored.append((c, score))
+        scored.append((cand, score))
+    return scored
 
-    scored.sort(key=lambda x: x[1], reverse=True)
+
+def _find_exact(
+    query_key: str,
+    candidates: list[CanonicalThing],
+) -> list[CanonicalThing]:
+    """Найти кандидатов с точным совпадением ключа."""
+    return [cand for cand in candidates if canonical_key(cand) == query_key]
+
+
+def _rank_matches(
+    query: CanonicalThing,
+    same_head: list[CanonicalThing],
+) -> SearchResult:
+    """Ранжировать кандидатов с одинаковым главным словом по скору."""
+    scored = _score_candidates(query, same_head)
+    scored.sort(key=lambda pair: pair[1], reverse=True)
     max_score = scored[0][1]
-    top = [c for c, s in scored if s == max_score]
-
+    top = [cand for cand, score in scored if score == max_score]
     if len(top) > 1:
         return SearchResult(
             status="ambiguous",
             matches=tuple(top),
             scores=tuple(max_score for _ in top),
         )
-
     return SearchResult(
         status="ranked",
         matches=tuple(top),
         scores=(max_score,),
     )
+
+
+def match(query: CanonicalThing, candidates: list[CanonicalThing]) -> SearchResult:
+    """Сопоставить запрос со списком кандидатов пользователя."""
+    exact = _find_exact(canonical_key(query), candidates)
+    if exact:
+        return SearchResult(status="exact", matches=tuple(exact))
+
+    same_head = [cand for cand in candidates if cand.canonical_head == query.canonical_head]
+    if not same_head:
+        return SearchResult(status="empty", matches=())
+
+    return _rank_matches(query, same_head)

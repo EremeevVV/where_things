@@ -7,6 +7,8 @@ import pymorphy3
 
 morph = pymorphy3.MorphAnalyzer()
 
+type NounInfo = tuple[str, str]
+
 
 class DecomposeStatus(StrEnum):
     """Статус результата разбора фразы."""
@@ -35,55 +37,60 @@ class DecomposeResult:
     candidates: tuple[str, ...] = ()
 
 
+def _parse_tokens(thing_phrase: str) -> tuple[list[NounInfo], list[str]]:
+    """Токенизация и морфоразбор через pymorphy3."""
+    nouns: list[NounInfo] = []
+    adjs: list[str] = []
+    for token in thing_phrase.split():
+        parsed = morph.parse(token.strip())[0]
+        if "NOUN" in parsed.tag:
+            nouns.append((parsed.normal_form, parsed.tag.case))
+        elif "ADJF" in parsed.tag or "PRTF" in parsed.tag:
+            adjs.append(parsed.normal_form)
+    return nouns, adjs
+
+
+def _build_descriptor(
+    thing_phrase: str,
+    head: str,
+    nouns: list[NounInfo],
+    adjs: list[str],
+) -> ThingDescriptor:
+    """Собрать ThingDescriptor из результатов разбора."""
+    non_head = [nf for nf, _ in nouns if nf != head]
+    noun_mods = tuple(sorted(non_head))
+    adj_mods = tuple(sorted(adjs))
+    return ThingDescriptor(
+        display=thing_phrase,
+        detected_head=head,
+        adj_modifiers=adj_mods,
+        noun_modifiers=noun_mods,
+    )
+
+
+def _pick_head(nouns: list[NounInfo]) -> str | None:
+    """Выбрать головное слово из списка существительных."""
+    non_gent = [nf for nf, case in nouns if case != "gent"]
+    if len(non_gent) == 1:
+        return non_gent[0]
+    if not non_gent and nouns:
+        return nouns[0][0]
+    return None
+
+
 def decompose(thing_phrase: str) -> DecomposeResult:
     """Разобрать именную группу на головное существительное и модификаторы."""
-    tokens = [t.strip() for t in thing_phrase.split() if t.strip()]
-
-    nouns: list[tuple[str, str]] = []
-    adjs: list[str] = []
-
-    for token in tokens:
-        parsed = morph.parse(token)[0]
-        tag = parsed.tag
-        if "NOUN" in tag:
-            nouns.append((parsed.normal_form, tag.case))
-        elif "ADJF" in tag or "PRTF" in tag:
-            adjs.append(parsed.normal_form)
-
-    head_candidates = [nf for nf, case in nouns if case != "gent"]
-
-    if not head_candidates:
-        if nouns:
-            head = nouns[0][0]
-            noun_mods = tuple(sorted(nf for nf, _ in nouns if nf != head))
-            adj_mods = tuple(sorted(adjs))
-            return DecomposeResult(
-                descriptor=ThingDescriptor(
-                    display=thing_phrase,
-                    detected_head=head,
-                    adj_modifiers=adj_mods,
-                    noun_modifiers=noun_mods,
-                ),
-                status=DecomposeStatus.OK,
-            )
-        return DecomposeResult(descriptor=None, status=DecomposeStatus.NO_HEAD)
-
-    if len(head_candidates) == 1:
-        head = head_candidates[0]
-        noun_mods = tuple(sorted(nf for nf, _ in nouns if nf != head))
-        adj_mods = tuple(sorted(adjs))
+    nouns, adjs = _parse_tokens(thing_phrase)
+    head = _pick_head(nouns)
+    if head is not None:
         return DecomposeResult(
-            descriptor=ThingDescriptor(
-                display=thing_phrase,
-                detected_head=head,
-                adj_modifiers=adj_mods,
-                noun_modifiers=noun_mods,
-            ),
+            descriptor=_build_descriptor(thing_phrase, head, nouns, adjs),
             status=DecomposeStatus.OK,
         )
-
+    if not nouns:
+        return DecomposeResult(descriptor=None, status=DecomposeStatus.NO_HEAD)
     return DecomposeResult(
         descriptor=None,
         status=DecomposeStatus.AMBIGUOUS_HEAD,
-        candidates=tuple(head_candidates),
+        candidates=tuple(nf for nf, case in nouns if case != "gent"),
     )

@@ -1,6 +1,15 @@
 from __future__ import annotations
 
-from src.nlu.thing.decomposer import DecomposeStatus, decompose
+from src.nlu.thing.decomposer import DecomposeResult, DecomposeStatus, decompose
+
+TEST_KEY = "ключ"
+
+
+def _assert_ok_head(actual: DecomposeResult, expected_head: str) -> None:
+    """Проверить успешный разбор с указанным головным словом."""
+    assert actual.status == DecomposeStatus.OK
+    assert actual.descriptor is not None
+    assert actual.descriptor.detected_head == expected_head
 
 
 class TestDecomposeBasic:
@@ -8,45 +17,35 @@ class TestDecomposeBasic:
 
     def test_single_noun(self):
         """Одиночное существительное -> head без модификаторов."""
-        result = decompose("ключ")
-        assert result.status == DecomposeStatus.OK
-        assert result.descriptor is not None
-        assert result.descriptor.detected_head == "ключ"
-        assert result.descriptor.adj_modifiers == ()
-        assert result.descriptor.noun_modifiers == ()
+        actual = decompose(TEST_KEY)
+        _assert_ok_head(actual, TEST_KEY)
+        assert actual.descriptor.adj_modifiers == ()
+        assert actual.descriptor.noun_modifiers == ()
 
     def test_noun_with_adj(self):
         """Существительное с прилагательным."""
-        result = decompose("гаечный ключ")
-        assert result.status == DecomposeStatus.OK
-        assert result.descriptor is not None
-        assert result.descriptor.detected_head == "ключ"
-        assert result.descriptor.adj_modifiers == ("гаечный",)
-        assert result.descriptor.noun_modifiers == ()
+        actual = decompose("гаечный ключ")
+        _assert_ok_head(actual, TEST_KEY)
+        assert actual.descriptor.adj_modifiers == ("гаечный",)
+        assert actual.descriptor.noun_modifiers == ()
 
     def test_noun_with_noun_preposition(self):
         """Существительное с предложным дополнением."""
-        result = decompose("ключи от машины")
-        assert result.status == DecomposeStatus.OK
-        assert result.descriptor is not None
-        assert result.descriptor.detected_head == "ключ"
-        assert result.descriptor.noun_modifiers == ("машина",)
+        actual = decompose("ключи от машины")
+        _assert_ok_head(actual, TEST_KEY)
+        assert actual.descriptor.noun_modifiers == ("машина",)
 
     def test_complex_phrase(self):
         """Сложная фраза с прилагательным и предложным дополнением."""
-        result = decompose("запасной ключ от машины")
-        assert result.status == DecomposeStatus.OK
-        assert result.descriptor is not None
-        assert result.descriptor.detected_head == "ключ"
-        assert "машина" in result.descriptor.noun_modifiers
+        actual = decompose("запасной ключ от машины")
+        _assert_ok_head(actual, TEST_KEY)
+        assert "машина" in actual.descriptor.noun_modifiers
 
     def test_multiple_adjectives(self):
         """Несколько прилагательных."""
-        result = decompose("мой старый ключ")
-        assert result.status == DecomposeStatus.OK
-        assert result.descriptor is not None
-        assert result.descriptor.detected_head == "ключ"
-        assert len(result.descriptor.adj_modifiers) >= 1
+        actual = decompose("мой старый ключ")
+        _assert_ok_head(actual, TEST_KEY)
+        assert len(actual.descriptor.adj_modifiers) >= 1
 
 
 class TestDecomposeOrderIndependence:
@@ -54,17 +53,13 @@ class TestDecomposeOrderIndependence:
 
     def test_head_at_end(self):
         """Головное слово в конце фразы."""
-        result = decompose("от машины ключ")
-        assert result.status == DecomposeStatus.OK
-        assert result.descriptor is not None
-        assert result.descriptor.detected_head == "ключ"
+        actual = decompose("от машины ключ")
+        _assert_ok_head(actual, TEST_KEY)
 
     def test_head_at_start(self):
         """Головное слово в начале фразы."""
-        result = decompose("ключ от машины")
-        assert result.status == DecomposeStatus.OK
-        assert result.descriptor is not None
-        assert result.descriptor.detected_head == "ключ"
+        actual = decompose("ключ от машины")
+        _assert_ok_head(actual, TEST_KEY)
 
 
 class TestDecomposeDeclension:
@@ -72,25 +67,23 @@ class TestDecomposeDeclension:
 
     def test_accusative_case(self):
         """Винительный падеж head (имитация слота после 'запомни')."""
-        result = decompose("зарядку")
-        assert result.status == DecomposeStatus.OK
-        assert result.descriptor is not None
-        assert result.descriptor.detected_head == "зарядка"
+        actual = decompose("зарядку")
+        assert actual.status == DecomposeStatus.OK
+        assert actual.descriptor is not None
+        assert actual.descriptor.detected_head == "зарядка"
 
     def test_genitive_singular(self):
         """Родительный падеж единственного числа."""
-        result = decompose("два ключа от машины")
-        assert result.status == DecomposeStatus.OK
-        assert result.descriptor is not None
-        assert result.descriptor.detected_head == "ключ"
+        actual = decompose("два ключа от машины")
+        _assert_ok_head(actual, TEST_KEY)
 
     def test_adjective_declension(self):
         """Склонённое прилагательное."""
-        result = decompose("зимняя резина")
-        assert result.status == DecomposeStatus.OK
-        assert result.descriptor is not None
-        assert result.descriptor.detected_head == "резина"
-        assert result.descriptor.adj_modifiers == ("зимний",)
+        actual = decompose("зимняя резина")
+        assert actual.status == DecomposeStatus.OK
+        assert actual.descriptor is not None
+        assert actual.descriptor.detected_head == "резина"
+        assert actual.descriptor.adj_modifiers == ("зимний",)
 
 
 class TestDecomposeAmbiguity:
@@ -98,16 +91,16 @@ class TestDecomposeAmbiguity:
 
     def test_two_nouns_no_head_clear(self):
         """Два существительных без явного главного -> AMBIGUOUS_HEAD."""
-        result = decompose("телефон зарядка")
-        assert result.status == DecomposeStatus.AMBIGUOUS_HEAD
-        assert result.descriptor is None
-        assert len(result.candidates) == 2
+        actual = decompose("телефон зарядка")
+        assert actual.status == DecomposeStatus.AMBIGUOUS_HEAD
+        assert actual.descriptor is None
+        assert len(actual.candidates) == 2
 
     def test_only_adjective(self):
         """Только прилагательное -> NO_HEAD (фактическое поведение)."""
-        result = decompose("старый")
-        assert result.status == DecomposeStatus.NO_HEAD
-        assert result.descriptor is None
+        actual = decompose("старый")
+        assert actual.status == DecomposeStatus.NO_HEAD
+        assert actual.descriptor is None
 
 
 class TestDecomposeInvariants:
@@ -115,33 +108,28 @@ class TestDecomposeInvariants:
 
     def test_descriptor_fields_not_empty(self):
         """Descriptor существует -> display и detected_head не пустые."""
-        result = decompose("гаечный ключ")
-        assert result.status == DecomposeStatus.OK
-        assert result.descriptor is not None
-        assert result.descriptor.display != ""
-        assert result.descriptor.detected_head != ""
+        actual = decompose("гаечный ключ")
+        _assert_ok_head(actual, TEST_KEY)
+        assert actual.descriptor.display != ""
 
     def test_head_not_in_noun_modifiers(self):
         """detected_head не входит в noun_modifiers."""
-        result = decompose("ключ от машины")
-        assert result.status == DecomposeStatus.OK
-        assert result.descriptor is not None
-        assert result.descriptor.detected_head not in result.descriptor.noun_modifiers
+        actual = decompose("ключ от машины")
+        _assert_ok_head(actual, TEST_KEY)
+        assert actual.descriptor.detected_head not in actual.descriptor.noun_modifiers
 
     def test_modifiers_sorted_no_duplicates(self):
         """adj_modifiers и noun_modifiers отсортированы, без дублей."""
-        result = decompose("запасной ключ от машины")
-        assert result.status == DecomposeStatus.OK
-        assert result.descriptor is not None
-        assert list(result.descriptor.adj_modifiers) == sorted(result.descriptor.adj_modifiers)
-        assert list(result.descriptor.noun_modifiers) == sorted(result.descriptor.noun_modifiers)
-        assert len(result.descriptor.adj_modifiers) == len(set(result.descriptor.adj_modifiers))
-        assert len(result.descriptor.noun_modifiers) == len(set(result.descriptor.noun_modifiers))
+        actual = decompose("запасной ключ от машины")
+        _assert_ok_head(actual, TEST_KEY)
+        assert list(actual.descriptor.adj_modifiers) == sorted(actual.descriptor.adj_modifiers)
+        assert list(actual.descriptor.noun_modifiers) == sorted(actual.descriptor.noun_modifiers)
+        assert len(actual.descriptor.adj_modifiers) == len(set(actual.descriptor.adj_modifiers))
+        assert len(actual.descriptor.noun_modifiers) == len(set(actual.descriptor.noun_modifiers))
 
     def test_display_preserves_original(self):
         """Display сохраняет оригинальную фразу."""
         phrase = "гаечный ключ от машины"
-        result = decompose(phrase)
-        assert result.status == DecomposeStatus.OK
-        assert result.descriptor is not None
-        assert result.descriptor.display == phrase
+        actual = decompose(phrase)
+        _assert_ok_head(actual, TEST_KEY)
+        assert actual.descriptor.display == phrase
