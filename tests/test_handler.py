@@ -356,6 +356,17 @@ class TestNormalizeDegraded:
         rec = repo.find_by_canonical_key("test_user", "мама мыла раму")
         assert rec is not None
 
+    def test_find_after_ambiguous_head_save(self):
+        """Find after AMBIGUOUS_HEAD save -> found."""
+        repo = InMemoryItemsRepository()
+        intents = _save_intents("мама мыла раму", "на полу", loc_verb="лежит")
+        msg = _make_message("запомни мама мыла раму на полу", intents=intents)
+        asyncio.run(handle_save(msg, _make_fsm(), repo))
+        find_intents = _intents("find", {"thing": "мама мыла раму"})
+        find_msg = _make_message("где мама мыла раму", intents=find_intents)
+        result = asyncio.run(handle_find(find_msg, repo))
+        assert "пол" in result.response.text.lower()
+
 
 # ── List ──────────────────────────────────────────────────────────────────────
 

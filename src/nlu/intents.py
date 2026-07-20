@@ -16,7 +16,6 @@ INTENT_DELETE = "delete"
 class SaveIntent:
     """Parsed save intent with slot values."""
 
-    thing: str
     place: str
     display_name: str
     canonical_key: str
@@ -30,11 +29,6 @@ class SaveIntent:
             return f"{self.preposition} {self.place}".strip()
         return self.place
 
-    @property
-    def is_complete(self) -> bool:
-        """Check if intent has both thing and location."""
-        return bool(self.thing and self.location)
-
     @classmethod
     def from_message(cls, message: Message) -> SaveIntent | None:
         """Parse save intent from message, or None if not present."""
@@ -45,7 +39,6 @@ class SaveIntent:
             return None
         normalized = normalize_thing(raw)
         return cls(
-            thing=raw,
             place=get_slot(message, INTENT_SAVE, "place"),
             display_name=normalized.display_name,
             canonical_key=normalized.canonical_key,
@@ -58,7 +51,6 @@ class SaveIntent:
 class FindIntent:
     """Parsed find intent with slot values."""
 
-    thing: str
     display_name: str
     canonical_key: str
 
@@ -72,7 +64,6 @@ class FindIntent:
             return None
         normalized = normalize_thing(raw)
         return cls(
-            thing=raw,
             display_name=normalized.display_name,
             canonical_key=normalized.canonical_key,
         )
@@ -82,7 +73,6 @@ class FindIntent:
 class DeleteIntent:
     """Parsed delete intent with slot values."""
 
-    thing: str
     display_name: str
     canonical_key: str
 
@@ -96,7 +86,6 @@ class DeleteIntent:
             return None
         normalized = normalize_thing(raw)
         return cls(
-            thing=raw,
             display_name=normalized.display_name,
             canonical_key=normalized.canonical_key,
         )

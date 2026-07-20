@@ -106,22 +106,23 @@ async def handle_save(message: Message, state: FSMContext, repo: ItemsRepository
             user_id,
             intent.canonical_key,
             intent.display_name,
-            intent.location,
+            location,
             intent.verb,
         )
-        return AliceResponse(
-            response=Response(text=f"Запомнила: {intent.display_name} {intent.verb} {intent.location}.")
-        )
+        return AliceResponse(response=Response(text=f"Запомнила: {intent.display_name} {intent.verb} {location}."))
 
     await state.set_state(SaveForm.awaiting_confirmation)
     await state.update_data(
         pending_canonical_key=intent.canonical_key,
         pending_display_name=intent.display_name,
-        pending_location=intent.location,
+        pending_location=location,
         pending_verb=intent.verb,
     )
-    old_text = f" «{existing.display_name}» (сейчас: {existing.verb} {existing.location})" if existing.location else ""
-    msg = f"У вас уже есть похожая вещь{old_text}. Обновить на «{intent.verb} {intent.location}»?"
+    msg = (
+        f"У вас уже есть похожая вещь «{existing.display_name}» "
+        f"(сейчас: {existing.verb} {existing.location}). "
+        f"Обновить на «{intent.verb} {location}»?"
+    )
     return AliceResponse(response=Response(text=msg))
 
 

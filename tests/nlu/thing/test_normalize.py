@@ -64,3 +64,10 @@ class TestNormalizeDegraded:
         result = normalize_thing("")
         assert result is not None
         assert isinstance(result.canonical_key, str)
+
+    def test_empty_string_returns_no_head(self):
+        """Empty string returns NO_HEAD with empty canonical_key (degraded)."""
+        result = normalize_thing("")
+        assert result.status == DecomposeStatus.NO_HEAD
+        assert result.canonical_key == ""
+        assert result.display_name == ""
