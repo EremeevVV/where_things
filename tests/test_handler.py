@@ -8,6 +8,7 @@ from aliceio.fsm.storage.base import StorageKey
 from aliceio.fsm.storage.memory import MemoryStorage
 from aliceio.types import NLU, Application, Message, Session, User
 
+from src.db import InMemoryItemsRepository
 from src.handlers import (
     handle_confirmation,
     handle_delete,
@@ -17,7 +18,6 @@ from src.handlers import (
     handle_save,
     handle_unknown,
 )
-from src.memory_repository import InMemoryItemsRepository
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 

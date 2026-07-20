@@ -22,6 +22,7 @@ from aliceio.fsm.storage.base import StorageKey  # noqa: E402
 from aliceio.fsm.storage.memory import MemoryStorage  # noqa: E402
 from aliceio.types import NLU, Application, Message, Session, User  # noqa: E402
 
+from src.db import InMemoryItemsRepository  # noqa: E402
 from src.handlers import (  # noqa: E402
     handle_delete,
     handle_find,
@@ -29,7 +30,6 @@ from src.handlers import (  # noqa: E402
     handle_list,
     handle_save,
 )
-from src.memory_repository import InMemoryItemsRepository  # noqa: E402
 
 TEST_DATA = Path(__file__).resolve().parent.parent / "test_data"
 _REPO = InMemoryItemsRepository()

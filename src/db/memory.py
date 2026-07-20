@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from src.repository import ItemRecord
+from src.db.protocol import ItemRecord
 
 
 class InMemoryItemsRepository:

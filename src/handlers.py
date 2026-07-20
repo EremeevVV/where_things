@@ -8,8 +8,8 @@ from aliceio.fsm.context import FSMContext
 from aliceio.fsm.state import State, StatesGroup
 from aliceio.types import AliceResponse, Message, Response, Update
 
+from src.db import ItemsRepository
 from src.nlu import DeleteIntent, FindIntent, SaveIntent
-from src.repository import ItemsRepository
 
 logger = logging.getLogger(__name__)
 

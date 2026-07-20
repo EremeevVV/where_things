@@ -10,8 +10,8 @@ from aliceio.webhook.yandex_functions import (
     RuntimeContext,
 )
 
+from src.db import YdbItemsRepository
 from src.handlers import setup_handlers
-from src.ydb_repository import YdbItemsRepository
 
 logger = logging.getLogger(__name__)
 

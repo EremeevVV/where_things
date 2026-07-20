@@ -7,7 +7,7 @@ import os
 import ydb
 import ydb.iam
 
-from src.repository import ItemRecord
+from src.db.protocol import ItemRecord
 
 logger = logging.getLogger(__name__)
 

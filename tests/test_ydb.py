@@ -14,7 +14,7 @@ from collections.abc import Generator
 
 import pytest
 
-from src import ydb_repository
+from src.db import ydb as ydb_repository
 
 TEST_THING = "wrench"
 TEST_PLACE = "toolbox"

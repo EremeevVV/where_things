@@ -22,9 +22,12 @@ where_things/
 │   ├── handlers.py                  # Обработчики интентов Alice + FSM + AuthMiddleware
 │   │                                  handle_launch, handle_save, handle_confirmation,
 │   │                                  handle_find, handle_list, handle_delete, handle_unknown
-│   ├── repository.py                # ItemsRepository Protocol + dataclass ItemRecord
-│   ├── memory_repository.py         # InMemoryItemsRepository (тестовая реализация)
-│   ├── ydb_repository.py            # YdbItemsRepository (продакшн, YDB + YQL)
+│   │
+│   ├── db/                          # Пакет работы с базой данных
+│   │   ├── __init__.py              # Ре-экспорты: ItemRecord, ItemsRepository, репозитории
+│   │   ├── protocol.py              # ItemsRepository Protocol + dataclass ItemRecord
+│   │   ├── memory.py                # InMemoryItemsRepository (тестовая реализация)
+│   │   └── ydb.py                   # YdbItemsRepository (продакшн, YDB + YQL)
 │   │                                  4 метода: upsert_item, find_by_canonical_key,
 │   │                                  delete_item, list_display_names
 │   │
@@ -80,7 +83,7 @@ where_things/
 ```
 main.py → handlers.py → nlu/intents.py → slots.py → message.nlu.intents
                     │                   → thing/normalize.py → decompose → canonicalize → canonical_key
-                    └→ repository.py → ydb_repository.py | memory_repository.py
+                    └→ db/protocol.py → db/memory.py | db/ydb.py
 ```
 
 ## Ключевые решения (ADR)
@@ -93,14 +96,14 @@ main.py → handlers.py → nlu/intents.py → slots.py → message.nlu.intents
 | Канонизация | Словарь-мэппер `canonical_dict.py`, тотальная функция |
 | Морфология | pymorphy3, без тяжёлых NLP-моделей (Natasha, spaCy) |
 | Поиск | Exact match через `find_by_canonical_key`, без fuzzy |
-| Хранилище | Protocol (ItemsRepository) + 2 реализации (InMemory + YDB) |
+| Хранилище | Protocol (db/protocol.py) + 2 реализации (db/memory.py + db/ydb.py) |
 | Коллизия canonical_key | Всегда `awaiting_confirmation` (обновление display_name) |
 
 ## Статистика
 
 | Метрика | Значение |
 |---------|----------|
-| Модули src/ | 11 файлов (включая nlu/) |
+| Модули src/ | 12 файлов (включая nlu/ и db/) |
 | Тесты | 89 тестов (81 passed, 8 skipped) |
 | thing/ тесты | 35 тестов |
 | Зависимости | ydb, aliceio, pymorphy3 |
