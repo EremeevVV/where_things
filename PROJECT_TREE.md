@@ -1,17 +1,18 @@
 # Дерево проекта where_things
 
 > Автоматически обновляемое описание структуры проекта.
-> Последнее обновление: 2026-07-19
+> Последнее обновление: 2026-07-20
 
 ```
 where_things/
 ├── main.py                          # Точка входа: Dispatcher + YCF webhook handler
 ├── AGENTS.md                        # Инструкции сборки, команды разработки
 ├── PROJECT_INSTRUCTIONS.md          # Полный контекст проекта, ADR, журнал итераций
+├── PROJECT_TREE.md                  # Это дерево проекта
 ├── README.md
 ├── alice_intents_grammars.md        # Грамматики интентов для Yandex Dialogs консоли
 ├── pyproject.toml                   # Конфигурация ruff, правила, per-file-ignores
-├── setup.cfg                        # Конфигурация flake8/WPS
+├── setup.cfg                        # Конфигурация flake8/WPS (расширение только с согласия владельца)
 ├── .python-version                  # Версия Python (3.12)
 ├── uv.lock                          # Lock файл зависимостей
 ├── .env.example                     # Пример переменных окружения
@@ -21,7 +22,7 @@ where_things/
 │   ├── handlers.py                  # Обработчики интентов Alice + FSM + AuthMiddleware
 │   │                                  handle_launch, handle_save, handle_confirmation,
 │   │                                  handle_find, handle_list, handle_delete, handle_unknown
-│   ├── repository.py                # ItemsRepository Protocol (интерфейс хранилища)
+│   ├── repository.py                # ItemsRepository Protocol + type ItemRecord, type ItemsMap
 │   ├── memory_repository.py         # InMemoryItemsRepository (тестовая реализация)
 │   ├── ydb_repository.py            # YdbItemsRepository (продакшн, YDB + SQL)
 │   │
@@ -29,15 +30,19 @@ where_things/
 │       ├── __init__.py              # Ре-экспорты: intents + thing pipeline
 │       ├── slots.py                 # get_intent(), get_slot() — извлечение данных из NLU
 │       ├── intents.py               # SaveIntent, FindIntent, DeleteIntent — типизированные модели
+│       │                              Константы: INTENT_SAVE, INTENT_FIND, INTENT_DELETE
 │       │
 │       └── thing/                   # Конвейер нормализации сущности Thing
 │           ├── __init__.py          # Ре-экспорты: decompose, canonicalize, canonical_key, match
 │           ├── decomposer.py        # Морфологический разбор pymorphy3
 │           │                          DecomposeStatus, ThingDescriptor, DecomposeResult
-│           ├── canonical_dict.py    # Словарь канонизации (синонимы: смартфон→телефон)
+│           │                          type NounInfo = tuple[str, str]
+│           │                          _parse_tokens(), _build_descriptor(), _pick_head()
+│           ├── canonical_dict.py    # Словарь канонизации (MappingProxyType)
 │           ├── canonicalizer.py     # canonicalize() → CanonicalThing
 │           └── matcher.py           # canonical_key(), match() + scoring (overlap coefficient)
-│                                      SearchResult, MODIFIER_WEIGHT_*
+│                                      _find_exact(), _rank_matches(), _score_candidates()
+│                                      SearchResult, MODIFIER_WEIGHT_*, NO_OVERLAP_SCORE
 │
 ├── tests/                           # Тесты
 │   ├── __init__.py
@@ -45,14 +50,16 @@ where_things/
 │   ├── test_handler.py              # Юнит-тесты обработчиков (23 теста)
 │   ├── test_handler_manual.py       # CLI раннер для ручного тестирования
 │   ├── test_runner.py               # Симулятор Cloud Functions с проверкой тайминга
-│   ├── test_states_with_repo.py     # Интеграционные тесты с InMemoryRepo (13 тестов)
+│   ├── test_states_with_repo.py     # Интеграционные тесты с InMemoryRepo
 │   ├── test_ydb.py                  # YDB интеграционные тесты (пропускаются без env)
+│   │                                  no_ydb_env fixture для изоляции тестов
 │   │
-│   └── nlu/thing/                   # Тесты конвейера нормализации (30 тестов)
+│   └── nlu/thing/                   # Тесты конвейера нормализации
 │       ├── __init__.py
-│       ├── test_decomposer.py       # 17 тестов: разбор + инварианты
-│       ├── test_canonicalizer.py    # 6 тестов: канонизация + идемпотентность
-│       └── test_matcher.py          # 7 тестов: exact/ambiguous/empty matching
+│       ├── test_decomposer.py       # Тесты: разбор + инварианты + _assert_ok_head helper
+│       ├── test_canonicalizer.py    # Тесты: канонизация + идемпотентность
+│       └── test_matcher.py          # Тесты: exact/ambiguous/empty matching
+│                                      Константы: TEST_KEY, TEST_WRENCH
 │
 └── test_data/                       # JSON фикстуры для ручного/симуляторного тестирования
     ├── launch.json                  # Новый сеанс
@@ -89,7 +96,7 @@ main.py → handlers.py → nlu/intents.py → slots.py → message.nlu.intents
 
 | Метрика | Значение |
 |---------|----------|
-| Модули src/ | 8 файлов |
-| Тесты | 54 теста (46 passed, 8 skipped) |
+| Модули src/ | 10 файлов (включая nlu/) |
+| Тесты | 84 теста (76 passed, 8 skipped) |
 | thing/ тесты | 30 тестов |
 | Зависимости | ydb, aliceio, pymorphy3 |
