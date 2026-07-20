@@ -18,7 +18,7 @@ from src import ydb_repository
 
 TEST_THING = "wrench"
 TEST_PLACE = "toolbox"
-TEST_PREPOSITION = "in"
+TEST_KEY = "test_thing#"
 
 
 def _ydb_configured() -> bool:
@@ -77,49 +77,55 @@ class TestYDBTable:
     TEST_USER = "__test_user_ydb_check__"
 
     @requires_ydb
-    def test_upsert_and_load(self):
-        """Upsert and load an item."""
+    def test_upsert_and_find(self):
+        """Upsert and find an item by canonical key."""
         repo = ydb_repository.YdbItemsRepository()
-        repo.upsert_item(self.TEST_USER, TEST_THING, TEST_PLACE)
-        stored = repo.load_items(self.TEST_USER)
-        assert TEST_THING in stored
-        assert stored[TEST_THING] == (TEST_PREPOSITION, TEST_PLACE)
+        repo.upsert_item(self.TEST_USER, TEST_KEY, TEST_THING, TEST_PLACE, "лежит")
+        rec = repo.find_by_canonical_key(self.TEST_USER, TEST_KEY)
+        assert rec is not None
+        assert rec.display_name == TEST_THING
+        assert rec.location == TEST_PLACE
+        assert rec.verb == "лежит"
 
     @requires_ydb
     def test_upsert_updates(self):
         """Upsert should update existing item."""
         repo = ydb_repository.YdbItemsRepository()
-        repo.upsert_item(self.TEST_USER, TEST_THING, "new_place")
-        stored = repo.load_items(self.TEST_USER)
-        assert stored[TEST_THING] == (TEST_PREPOSITION, "new_place")
+        repo.upsert_item(self.TEST_USER, TEST_KEY, TEST_THING, "new_place", "лежит")
+        rec = repo.find_by_canonical_key(self.TEST_USER, TEST_KEY)
+        assert rec is not None
+        assert rec.location == "new_place"
 
     @requires_ydb
-    def test_load_empty_user(self):
-        """Load items for empty user."""
+    def test_list_empty_user(self):
+        """List display names for empty user."""
         repo = ydb_repository.YdbItemsRepository()
-        stored = repo.load_items("__nonexistent_user_12345__")
-        assert stored == {}
+        names = repo.list_display_names("__nonexistent_user_12345__")
+        assert names == []
 
     @requires_ydb
     def test_delete(self):
         """Delete an item."""
         repo = ydb_repository.YdbItemsRepository()
-        repo.upsert_item(self.TEST_USER, "to_delete", "somewhere")
-        repo.delete_item(self.TEST_USER, "to_delete")
-        stored = repo.load_items(self.TEST_USER)
-        assert "to_delete" not in stored
+        repo.upsert_item(self.TEST_USER, "to_delete#", "to_delete", "somewhere", "лежит")
+        repo.delete_item(self.TEST_USER, "to_delete#")
+        rec = repo.find_by_canonical_key(self.TEST_USER, "to_delete#")
+        assert rec is None
 
     @requires_ydb
     def test_multiple_items(self):
         """Handle multiple items."""
         repo = ydb_repository.YdbItemsRepository()
-        repo.upsert_item(self.TEST_USER, "item_a", "place_a")
-        repo.upsert_item(self.TEST_USER, "item_b", "place_b")
-        stored = repo.load_items(self.TEST_USER)
-        assert stored["item_a"] == ("in", "place_a")
-        assert stored["item_b"] == ("in", "place_b")
-        repo.delete_item(self.TEST_USER, "item_a")
-        repo.delete_item(self.TEST_USER, "item_b")
+        repo.upsert_item(self.TEST_USER, "item_a#", "item_a", "place_a", "лежит")
+        repo.upsert_item(self.TEST_USER, "item_b#", "item_b", "place_b", "лежит")
+        rec_a = repo.find_by_canonical_key(self.TEST_USER, "item_a#")
+        rec_b = repo.find_by_canonical_key(self.TEST_USER, "item_b#")
+        assert rec_a is not None
+        assert rec_a.location == "place_a"
+        assert rec_b is not None
+        assert rec_b.location == "place_b"
+        repo.delete_item(self.TEST_USER, "item_a#")
+        repo.delete_item(self.TEST_USER, "item_b#")
 
 
 class TestYDBWithoutEnv:
@@ -129,7 +135,7 @@ class TestYDBWithoutEnv:
         """is_available should return False without YDB config."""
         assert not ydb_repository.is_available()
 
-    def test_load_items_returns_empty(self, no_ydb_env: None) -> None:
-        """load_items should return empty dict without YDB config."""
+    def test_list_display_names_returns_empty(self, no_ydb_env: None) -> None:
+        """list_display_names should return empty list without YDB config."""
         repo = ydb_repository.YdbItemsRepository()
-        assert repo.load_items("any_user") == {}
+        assert repo.list_display_names("any_user") == []

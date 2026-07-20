@@ -24,7 +24,9 @@ where_things/
 │   │                                  handle_find, handle_list, handle_delete, handle_unknown
 │   ├── repository.py                # ItemsRepository Protocol + dataclass ItemRecord
 │   ├── memory_repository.py         # InMemoryItemsRepository (тестовая реализация)
-│   ├── ydb_repository.py            # YdbItemsRepository (продакшн, YDB + SQL)
+│   ├── ydb_repository.py            # YdbItemsRepository (продакшн, YDB + YQL)
+│   │                                  4 метода: upsert_item, find_by_canonical_key,
+│   │                                  delete_item, list_display_names
 │   │
 │   └── nlu/                         # Пакет NLU (обработка естественного языка)
 │       ├── __init__.py              # Ре-экспорты: intents + thing pipeline + normalize
@@ -99,6 +101,6 @@ main.py → handlers.py → nlu/intents.py → slots.py → message.nlu.intents
 | Метрика | Значение |
 |---------|----------|
 | Модули src/ | 11 файлов (включая nlu/) |
-| Тесты | 87 тестов (79 passed, 8 skipped) |
-| thing/ тесты | 34 теста |
+| Тесты | 89 тестов (81 passed, 8 skipped) |
+| thing/ тесты | 35 тестов |
 | Зависимости | ydb, aliceio, pymorphy3 |
