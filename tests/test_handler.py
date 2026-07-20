@@ -115,7 +115,10 @@ class TestSave:
         msg = _make_message("запомни что паспорт лежит в ящике", intents=intents)
         result = asyncio.run(handle_save(msg, _make_fsm(), repo))
         assert "запомнила" in result.response.text.lower()
-        assert repo.load_items("test_user") == {"паспорт": ("лежит", "в ящике")}
+        rec = repo.find_by_canonical_key("test_user", "паспорт#")
+        assert rec is not None
+        assert rec.location == "в ящике"
+        assert rec.verb == "лежит"
 
     def test_multiword_place(self):
         """Save item with multi-word place."""
@@ -123,7 +126,9 @@ class TestSave:
         intents = _save_intents("зарядка", "на полке у окна", loc_verb="лежит")
         msg = _make_message("запомни зарядка лежит на полке у окна", intents=intents)
         asyncio.run(handle_save(msg, _make_fsm(), repo))
-        assert repo.load_items("test_user") == {"зарядка": ("лежит", "на полке у окна")}
+        rec = repo.find_by_canonical_key("test_user", "зарядка#")
+        assert rec is not None
+        assert rec.location == "на полке у окна"
 
     def test_incomplete_asks_for_full_phrase(self):
         """Incomplete save should ask for full phrase."""
@@ -136,21 +141,23 @@ class TestSave:
     def test_existing_item_asks_confirmation(self):
         """Existing item should ask for confirmation."""
         repo = InMemoryItemsRepository()
-        repo.upsert_item("test_user", "паспорт", "в ящике", "лежит")
+        repo.upsert_item("test_user", "паспорт#", "паспорт", "в ящике", "лежит")
         intents = _save_intents("паспорт", "на полке", loc_verb="лежит")
         msg = _make_message("запомни что паспорт лежит на полке", intents=intents)
         result = asyncio.run(handle_save(msg, _make_fsm(), repo))
         text = result.response.text.lower()
-        assert "уже есть" in text or "обновить" in text
+        assert "похожая" in text or "обновить" in text
 
     def test_existing_item_keeps_old_location(self):
         """Existing item should keep old location until confirmed."""
         repo = InMemoryItemsRepository()
-        repo.upsert_item("test_user", "паспорт", "в ящике", "лежит")
+        repo.upsert_item("test_user", "паспорт#", "паспорт", "в ящике", "лежит")
         intents = _save_intents("паспорт", "на полке", loc_verb="лежит")
         msg = _make_message("запомни что паспорт лежит на полке", intents=intents)
         asyncio.run(handle_save(msg, _make_fsm(), repo))
-        assert repo.load_items("test_user") == {"паспорт": ("лежит", "в ящике")}
+        rec = repo.find_by_canonical_key("test_user", "паспорт#")
+        assert rec is not None
+        assert rec.location == "в ящике"
 
 
 # ── Confirmation ──────────────────────────────────────────────────────────────
@@ -162,7 +169,7 @@ class TestConfirmation:
     def test_yes_updates(self):
         """Confirming should update the item location."""
         repo = InMemoryItemsRepository()
-        repo.upsert_item("test_user", "паспорт", "в ящике", "лежит")
+        repo.upsert_item("test_user", "паспорт#", "паспорт", "в ящике", "лежит")
         fsm = _make_fsm()
         intents = _save_intents("паспорт", "на полке", loc_verb="лежит")
         msg = _make_message("запомни что паспорт лежит на полке", intents=intents)
@@ -170,12 +177,14 @@ class TestConfirmation:
         msg_yes = _make_message("да", intents={"YANDEX.CONFIRM": {}})
         result = asyncio.run(handle_confirmation(msg_yes, fsm, repo))
         assert "обновила" in result.response.text.lower()
-        assert repo.load_items("test_user") == {"паспорт": ("лежит", "на полке")}
+        rec = repo.find_by_canonical_key("test_user", "паспорт#")
+        assert rec is not None
+        assert rec.location == "на полке"
 
     def test_no_keeps_old(self):
         """Rejecting should keep old location."""
         repo = InMemoryItemsRepository()
-        repo.upsert_item("test_user", "паспорт", "в ящике", "лежит")
+        repo.upsert_item("test_user", "паспорт#", "паспорт", "в ящике", "лежит")
         fsm = _make_fsm()
         intents = _save_intents("паспорт", "на полке", loc_verb="лежит")
         msg = _make_message("запомни что паспорт лежит на полке", intents=intents)
@@ -183,12 +192,14 @@ class TestConfirmation:
         msg_no = _make_message("нет", intents={"YANDEX.REJECT": {}})
         result = asyncio.run(handle_confirmation(msg_no, fsm, repo))
         assert "оставила" in result.response.text.lower()
-        assert repo.load_items("test_user") == {"паспорт": ("лежит", "в ящике")}
+        rec = repo.find_by_canonical_key("test_user", "паспорт#")
+        assert rec is not None
+        assert rec.location == "в ящике"
 
     def test_unrecognized_answer(self):
         """Unrecognized answer should ask for yes/no."""
         repo = InMemoryItemsRepository()
-        repo.upsert_item("test_user", "паспорт", "в ящике", "лежит")
+        repo.upsert_item("test_user", "паспорт#", "паспорт", "в ящике", "лежит")
         fsm = _make_fsm()
         intents = _save_intents("паспорт", "на полке", loc_verb="лежит")
         msg = _make_message("запомни что паспорт лежит на полке", intents=intents)
@@ -208,37 +219,9 @@ class TestFind:
     def test_finds_exact_match(self):
         """Find exact match by name."""
         repo = InMemoryItemsRepository()
-        repo.upsert_item("test_user", "паспорт", "в ящике", "лежит")
+        repo.upsert_item("test_user", "паспорт#", "паспорт", "в ящике", "лежит")
         intents = _intents("find", {"thing": "паспорт"})
         msg = _make_message("где лежит паспорт", intents=intents)
-        result = asyncio.run(handle_find(msg, repo))
-        assert "ящик" in result.response.text.lower()
-
-    def test_finds_exact_not_substring(self):
-        """Exact match should not find substrings."""
-        repo = InMemoryItemsRepository()
-        repo.upsert_item("test_user", "зарядка для телефона", "на полке", "лежит")
-        intents = _intents("find", {"thing": "зарядка"})
-        msg = _make_message("где зарядка", intents=intents)
-        result = asyncio.run(handle_find(msg, repo))
-        assert "не знаю" in result.response.text.lower()
-
-    def test_substring_case_insensitive(self):
-        """Find should be case-insensitive."""
-        repo = InMemoryItemsRepository()
-        repo.upsert_item("test_user", "Паспорт", "в ящике", "лежит")
-        intents = _intents("find", {"thing": "паспорт"})
-        msg = _make_message("где паспорт", intents=intents)
-        result = asyncio.run(handle_find(msg, repo))
-        assert "ящик" in result.response.text.lower()
-
-    def test_multiple_matches(self):
-        """Exact match should find only the exact name."""
-        repo = InMemoryItemsRepository()
-        repo.upsert_item("test_user", "паспорт", "ящик", "лежит")
-        repo.upsert_item("test_user", "паспорт гражданина", "шкаф", "лежит")
-        intents = _intents("find", {"thing": "паспорт"})
-        msg = _make_message("где паспорт", intents=intents)
         result = asyncio.run(handle_find(msg, repo))
         assert "ящик" in result.response.text.lower()
 
@@ -251,6 +234,129 @@ class TestFind:
         assert "не знаю" in result.response.text.lower()
 
 
+# ── Normalize + Find ──────────────────────────────────────────────────────────
+
+
+class TestNormalizeFind:
+    """Tests for synonym-based find via normalization."""
+
+    def test_find_by_synonym(self):
+        """Save as смартфон, find as мобильник -> found."""
+        repo = InMemoryItemsRepository()
+        repo.upsert_item("test_user", "телефон#", "смартфон", "в ящике", "лежит")
+        intents = _intents("find", {"thing": "мобильник"})
+        msg = _make_message("где мобильник", intents=intents)
+        result = asyncio.run(handle_find(msg, repo))
+        assert "ящик" in result.response.text.lower()
+
+    def test_find_returns_intent_display_name(self):
+        """Answer uses what the user said, not what's in DB."""
+        repo = InMemoryItemsRepository()
+        repo.upsert_item("test_user", "телефон#", "смартфон", "в ящике", "лежит")
+        intents = _intents("find", {"thing": "мобильник"})
+        msg = _make_message("где мобильник", intents=intents)
+        result = asyncio.run(handle_find(msg, repo))
+        assert "мобильник" in result.response.text.lower()
+
+
+# ── Normalize + Save ──────────────────────────────────────────────────────────
+
+
+class TestNormalizeSave:
+    """Tests for canonical collision via normalization."""
+
+    def test_canonical_collision_asks_confirmation(self):
+        """Save смартфон then save мобильник -> awaiting_confirmation."""
+        repo = InMemoryItemsRepository()
+        repo.upsert_item("test_user", "телефон#", "смартфон", "в ящике", "лежит")
+        intents = _save_intents("мобильник", "на полке", loc_verb="лежит")
+        msg = _make_message("запомни что мобильник лежит на полке", intents=intents)
+        fsm = _make_fsm()
+        result = asyncio.run(handle_save(msg, fsm, repo))
+        text = result.response.text.lower()
+        assert "похожая" in text or "обновить" in text
+
+    def test_canonical_collision_confirm_keeps_new_display(self):
+        """After confirm, display_name updates to the new one."""
+        repo = InMemoryItemsRepository()
+        repo.upsert_item("test_user", "телефон#", "смартфон", "в ящике", "лежит")
+        fsm = _make_fsm()
+        intents = _save_intents("мобильник", "на полке", loc_verb="лежит")
+        msg = _make_message("запомни что мобильник лежит на полке", intents=intents)
+        asyncio.run(handle_save(msg, fsm, repo))
+        msg_yes = _make_message("да", intents={"YANDEX.CONFIRM": {}})
+        asyncio.run(handle_confirmation(msg_yes, fsm, repo))
+        rec = repo.find_by_canonical_key("test_user", "телефон#")
+        assert rec is not None
+        assert rec.display_name == "мобильник"
+
+    def test_canonical_collision_reject_keeps_old_display(self):
+        """After reject, display_name stays the old one."""
+        repo = InMemoryItemsRepository()
+        repo.upsert_item("test_user", "телефон#", "смартфон", "в ящике", "лежит")
+        fsm = _make_fsm()
+        intents = _save_intents("мобильник", "на полке", loc_verb="лежит")
+        msg = _make_message("запомни что мобильник лежит на полке", intents=intents)
+        asyncio.run(handle_save(msg, fsm, repo))
+        msg_no = _make_message("нет", intents={"YANDEX.REJECT": {}})
+        asyncio.run(handle_confirmation(msg_no, fsm, repo))
+        rec = repo.find_by_canonical_key("test_user", "телефон#")
+        assert rec is not None
+        assert rec.display_name == "смартфон"
+
+
+# ── Normalize Delete ──────────────────────────────────────────────────────────
+
+
+class TestNormalizeDelete:
+    """Tests for delete via synonym."""
+
+    def test_delete_by_synonym(self):
+        """Save смартфон, delete айфон -> deleted."""
+        repo = InMemoryItemsRepository()
+        repo.upsert_item("test_user", "телефон#", "смартфон", "в ящике", "лежит")
+        intents = _intents("delete", {"thing": "айфон"})
+        msg = _make_message("забудь про айфон", intents=intents)
+        result = asyncio.run(handle_delete(msg, repo))
+        assert "забыла" in result.response.text.lower()
+        assert repo.find_by_canonical_key("test_user", "телефон#") is None
+
+
+# ── Normalize Degraded ────────────────────────────────────────────────────────
+
+
+class TestNormalizeDegraded:
+    """Tests for degraded normalization (NO_HEAD / AMBIGUOUS_HEAD)."""
+
+    def test_save_no_head(self):
+        """Save with NO_HEAD phrase -> saved with literal key."""
+        repo = InMemoryItemsRepository()
+        intents = _save_intents("прекрасно", "на столе", loc_verb="лежит")
+        msg = _make_message("запомни прекрасно на столе", intents=intents)
+        asyncio.run(handle_save(msg, _make_fsm(), repo))
+        rec = repo.find_by_canonical_key("test_user", "прекрасно")
+        assert rec is not None
+        assert rec.display_name == "прекрасно"
+
+    def test_find_after_no_head_save(self):
+        """Find after NO_HEAD save -> found."""
+        repo = InMemoryItemsRepository()
+        repo.upsert_item("test_user", "прекрасно", "прекрасно", "на столе", "лежит")
+        intents = _intents("find", {"thing": "прекрасно"})
+        msg = _make_message("где прекрасно", intents=intents)
+        result = asyncio.run(handle_find(msg, repo))
+        assert "стол" in result.response.text.lower()
+
+    def test_save_ambiguous_head(self):
+        """Save with AMBIGUOUS_HEAD phrase -> saved with literal key."""
+        repo = InMemoryItemsRepository()
+        intents = _save_intents("мама мыла раму", "на полу", loc_verb="лежит")
+        msg = _make_message("запомни мама мыла раму на полу", intents=intents)
+        asyncio.run(handle_save(msg, _make_fsm(), repo))
+        rec = repo.find_by_canonical_key("test_user", "мама мыла раму")
+        assert rec is not None
+
+
 # ── List ──────────────────────────────────────────────────────────────────────
 
 
@@ -260,8 +366,8 @@ class TestList:
     def test_lists_names_only(self):
         """List should show only names, not locations."""
         repo = InMemoryItemsRepository()
-        repo.upsert_item("test_user", "паспорт", "ящик", "лежит")
-        repo.upsert_item("test_user", "ключи", "шкаф", "висят")
+        repo.upsert_item("test_user", "паспорт#", "паспорт", "ящик", "лежит")
+        repo.upsert_item("test_user", "ключи#", "ключи", "шкаф", "висят")
         msg = _make_message("что ты помнишь")
         result = asyncio.run(handle_list(msg, repo))
         text = result.response.text.lower()
@@ -287,12 +393,12 @@ class TestDelete:
     def test_deletes_item(self):
         """Delete an existing item."""
         repo = InMemoryItemsRepository()
-        repo.upsert_item("test_user", "паспорт", "ящик", "лежит")
+        repo.upsert_item("test_user", "паспорт#", "паспорт", "ящик", "лежит")
         intents = _intents("delete", {"thing": "паспорт"})
         msg = _make_message("забудь про паспорт", intents=intents)
         result = asyncio.run(handle_delete(msg, repo))
         assert "забыла" in result.response.text.lower()
-        assert repo.load_items("test_user") == {}
+        assert repo.find_by_canonical_key("test_user", "паспорт#") is None
 
     def test_delete_not_found(self):
         """Delete unknown item should show not found."""

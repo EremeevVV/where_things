@@ -6,12 +6,12 @@ from src.nlu.thing import (
     CanonicalThing,
     DecomposeResult,
     DecomposeStatus,
-    SearchResult,
+    NormalizedThing,
     ThingDescriptor,
     canonical_key,
     canonicalize,
     decompose,
-    match,
+    normalize_thing,
 )
 
 __all__ = [
@@ -20,13 +20,13 @@ __all__ = [
     "DecomposeStatus",
     "DeleteIntent",
     "FindIntent",
+    "NormalizedThing",
     "SaveIntent",
-    "SearchResult",
     "ThingDescriptor",
     "canonical_key",
     "canonicalize",
     "decompose",
     "get_intent",
     "get_slot",
-    "match",
+    "normalize_thing",
 ]

@@ -1,34 +1,44 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Protocol
 
-type ItemRecord = tuple[str, str]
-type ItemsMap = dict[str, ItemRecord]
+
+@dataclass(frozen=True)
+class ItemRecord:
+    """Canonical record for a stored item."""
+
+    display_name: str
+    location: str
+    verb: str
 
 
 class ItemsRepository(Protocol):
     """Интерфейс хранилища вещей пользователя."""
 
-    def upsert_item(self, user_id: str, name: str, location: str, verb: str) -> None:
+    def upsert_item(
+        self,
+        user_id: str,
+        canonical_key: str,
+        display_name: str,
+        location: str,
+        verb: str,
+    ) -> None:
         """Insert or update an item."""
         ...
 
-    def load_items(self, user_id: str) -> ItemsMap:
-        """Load all items for a user. Returns {name: (verb, location)}."""
+    def find_by_canonical_key(
+        self,
+        user_id: str,
+        canonical_key: str,
+    ) -> ItemRecord | None:
+        """Find an item by its canonical key."""
         ...
 
-    def delete_item(self, user_id: str, name: str) -> None:
-        """Delete an item by name."""
+    def delete_item(self, user_id: str, canonical_key: str) -> None:
+        """Delete an item by canonical key."""
         ...
 
-    def search_items(self, user_id: str, query: str) -> list[str]:
-        """Search items by exact name (case-insensitive)."""
-        ...
-
-    def list_names(self, user_id: str) -> list[str]:
-        """List all item names."""
-        ...
-
-    def item_exists(self, user_id: str, name: str) -> bool:
-        """Check if an item exists."""
+    def list_display_names(self, user_id: str) -> list[str]:
+        """List all display names for a user."""
         ...

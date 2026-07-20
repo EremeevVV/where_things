@@ -90,9 +90,7 @@ async def handle_save(message: Message, state: FSMContext, repo: ItemsRepository
     if intent is None:
         return AliceResponse(response=Response(text="Не распознала команду."))
 
-    thing = intent.thing
     location = intent.location
-    verb = intent.verb
     user_id = _user_id(message)
 
     if not location:
@@ -102,21 +100,29 @@ async def handle_save(message: Message, state: FSMContext, repo: ItemsRepository
             )
         )
 
-    if repo.item_exists(user_id, thing):
-        saved_items = repo.load_items(user_id)
-        old_verb, old_location = saved_items.get(thing, ("", ""))
-        await state.set_state(SaveForm.awaiting_confirmation)
-        await state.update_data(
-            pending_thing=thing,
-            pending_location=location,
-            pending_verb=verb,
+    existing = repo.find_by_canonical_key(user_id, intent.canonical_key)
+    if existing is None:
+        repo.upsert_item(
+            user_id,
+            intent.canonical_key,
+            intent.display_name,
+            intent.location,
+            intent.verb,
         )
-        old_text = f" (сейчас: {old_verb} {old_location})" if old_location else ""
-        msg = f"{thing}{old_text} уже есть в базе. Обновить местоположение на «{verb} {location}»?"
-        return AliceResponse(response=Response(text=msg))
+        return AliceResponse(
+            response=Response(text=f"Запомнила: {intent.display_name} {intent.verb} {intent.location}.")
+        )
 
-    repo.upsert_item(user_id, thing, location, verb)
-    return AliceResponse(response=Response(text=f"Запомнила: {thing} {verb} {location}."))
+    await state.set_state(SaveForm.awaiting_confirmation)
+    await state.update_data(
+        pending_canonical_key=intent.canonical_key,
+        pending_display_name=intent.display_name,
+        pending_location=intent.location,
+        pending_verb=intent.verb,
+    )
+    old_text = f" «{existing.display_name}» (сейчас: {existing.verb} {existing.location})" if existing.location else ""
+    msg = f"У вас уже есть похожая вещь{old_text}. Обновить на «{intent.verb} {intent.location}»?"
+    return AliceResponse(response=Response(text=msg))
 
 
 # ── Save (AWAITING_CONFIRMATION) ─────────────────────────────────────────────
@@ -126,7 +132,8 @@ async def handle_save(message: Message, state: FSMContext, repo: ItemsRepository
 async def handle_confirmation(message: Message, state: FSMContext, repo: ItemsRepository) -> AliceResponse:
     """Handle yes/no confirmation for updating an existing item."""
     fsm_data = await state.get_data()
-    pending_thing = fsm_data.get("pending_thing", "")
+    pending_canonical_key = fsm_data.get("pending_canonical_key", "")
+    pending_display_name = fsm_data.get("pending_display_name", "")
     pending_location = fsm_data.get("pending_location", "")
     pending_verb = fsm_data.get("pending_verb", "лежит")
     user_id = _user_id(message)
@@ -134,8 +141,16 @@ async def handle_confirmation(message: Message, state: FSMContext, repo: ItemsRe
 
     if "YANDEX.CONFIRM" in intents:
         await state.clear()
-        repo.upsert_item(user_id, pending_thing, pending_location, pending_verb)
-        return AliceResponse(response=Response(text=f"Обновила: {pending_thing} {pending_verb} {pending_location}."))
+        repo.upsert_item(
+            user_id,
+            pending_canonical_key,
+            pending_display_name,
+            pending_location,
+            pending_verb,
+        )
+        return AliceResponse(
+            response=Response(text=f"Обновила: {pending_display_name} {pending_verb} {pending_location}.")
+        )
 
     if "YANDEX.REJECT" in intents:
         await state.clear()
@@ -165,21 +180,13 @@ async def handle_find(message: Message, repo: ItemsRepository) -> AliceResponse:
     if intent is None:
         return AliceResponse(response=Response(text="Не распознала команду."))
 
-    thing = intent.thing
     user_id = _user_id(message)
-    matches = repo.search_items(user_id, thing)
+    existing = repo.find_by_canonical_key(user_id, intent.canonical_key)
 
-    if not matches:
-        return AliceResponse(response=Response(text=f"Я не знаю, где лежит {thing}."))
+    if existing is None:
+        return AliceResponse(response=Response(text=f"Я не знаю, где лежит {intent.display_name}."))
 
-    if len(matches) == 1:
-        name = matches[0]
-        saved_items = repo.load_items(user_id)
-        verb, location = saved_items.get(name, ("лежит", ""))
-        return AliceResponse(response=Response(text=f"{name.capitalize()} {verb} {location}."))
-
-    names = ", ".join(matches)
-    return AliceResponse(response=Response(text=f"Найдено несколько: {names}. Уточните, что ищете."))
+    return AliceResponse(response=Response(text=f"{intent.display_name} {existing.verb} {existing.location}."))
 
 
 # ── List ──────────────────────────────────────────────────────────────────────
@@ -189,7 +196,7 @@ async def handle_find(message: Message, repo: ItemsRepository) -> AliceResponse:
 async def handle_list(message: Message, repo: ItemsRepository) -> AliceResponse:
     """List all saved item names."""
     user_id = _user_id(message)
-    names = repo.list_names(user_id)
+    names = repo.list_display_names(user_id)
     if not names:
         return AliceResponse(response=Response(text="Я пока ничего не помню."))
     items_str = ", ".join(names)
@@ -206,13 +213,12 @@ async def handle_delete(message: Message, repo: ItemsRepository) -> AliceRespons
     if intent is None:
         return AliceResponse(response=Response(text="Не распознала команду."))
 
-    thing = intent.thing
     user_id = _user_id(message)
-    saved_items = repo.load_items(user_id)
-    if thing in saved_items:
-        repo.delete_item(user_id, thing)
-        return AliceResponse(response=Response(text=f"Забыла про {thing}."))
-    return AliceResponse(response=Response(text=f"У меня нет воспоминаний про {thing}."))
+    existing = repo.find_by_canonical_key(user_id, intent.canonical_key)
+    if existing is not None:
+        repo.delete_item(user_id, intent.canonical_key)
+        return AliceResponse(response=Response(text=f"Забыла про {intent.display_name}."))
+    return AliceResponse(response=Response(text=f"У меня нет воспоминаний про {intent.display_name}."))
 
 
 # ── Unknown ───────────────────────────────────────────────────────────────────

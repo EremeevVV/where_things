@@ -7,16 +7,17 @@ from src.nlu.thing.decomposer import (
     ThingDescriptor,
     decompose,
 )
-from src.nlu.thing.matcher import SearchResult, canonical_key, match
+from src.nlu.thing.matcher import canonical_key
+from src.nlu.thing.normalize import NormalizedThing, normalize_thing
 
 __all__ = [
     "CanonicalThing",
     "DecomposeResult",
     "DecomposeStatus",
-    "SearchResult",
+    "NormalizedThing",
     "ThingDescriptor",
     "canonical_key",
     "canonicalize",
     "decompose",
-    "match",
+    "normalize_thing",
 ]
