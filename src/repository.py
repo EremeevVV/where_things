@@ -2,6 +2,9 @@ from __future__ import annotations
 
 from typing import Protocol
 
+type ItemRecord = tuple[str, str]
+type ItemsMap = dict[str, ItemRecord]
+
 
 class ItemsRepository(Protocol):
     """Интерфейс хранилища вещей пользователя."""
@@ -10,7 +13,7 @@ class ItemsRepository(Protocol):
         """Insert or update an item."""
         ...
 
-    def load_items(self, user_id: str) -> dict[str, tuple[str, str]]:
+    def load_items(self, user_id: str) -> ItemsMap:
         """Load all items for a user. Returns {name: (verb, location)}."""
         ...
 

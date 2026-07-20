@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 import datetime
+import logging
 import os
 
 import ydb
 import ydb.iam
+
+logger = logging.getLogger(__name__)
 
 # ── YDB driver + query pool (module level — reused across warm invocations) ──
 
@@ -63,10 +66,10 @@ def _ensure_pool() -> ydb.QuerySessionPool | None:
         return _pool
 
     if not YDB_ENDPOINT or not YDB_DATABASE:
-        print("[db] YDB_ENDPOINT or YDB_DATABASE not set, skipping")
+        logger.info("YDB_ENDPOINT or YDB_DATABASE not set, skipping")
         return None
 
-    print(f"[db] Initializing: {YDB_ENDPOINT} / {YDB_DATABASE}")
+    logger.info("Initializing: %s / %s", YDB_ENDPOINT, YDB_DATABASE)
     try:
         credentials = ydb.iam.MetadataUrlCredentials()
         _driver = ydb.Driver(
@@ -76,11 +79,11 @@ def _ensure_pool() -> ydb.QuerySessionPool | None:
         )
         _driver.wait(fail_fast=True, timeout=5)
         _pool = ydb.QuerySessionPool(_driver)
-    except Exception as e:
-        print(f"[db] FAILED to init YDB: {e}")
+    except Exception:
+        logger.exception("FAILED to init YDB")
         return None
     else:
-        print("[db] YDB pool initialized")
+        logger.info("YDB pool initialized")
         return _pool
 
 
@@ -96,7 +99,7 @@ class YdbItemsRepository:
         """Save or update an item in YDB."""
         pool = _ensure_pool()
         if pool is None:
-            print(f"[db] upsert SKIPPED (no pool): {user_id} / {name}")
+            logger.info("upsert SKIPPED (no pool): %s / %s", user_id, name)
             return
 
         try:
@@ -113,15 +116,15 @@ class YdbItemsRepository:
                     ),
                 },
             )
-            print(f"[db] upsert OK: {user_id} / {name} = {verb} {location}")
-        except Exception as e:
-            print(f"[db] upsert FAILED: {user_id} / {name} — {e}")
+            logger.info("upsert OK: %s / %s = %s %s", user_id, name, verb, location)
+        except Exception:
+            logger.exception("upsert FAILED: %s / %s", user_id, name)
 
     def load_items(self, user_id: str) -> dict[str, tuple[str, str]]:
         """Load all items for a user from YDB. Returns {name: (verb, location)}."""
         pool = _ensure_pool()
         if pool is None:
-            print(f"[db] load SKIPPED (no pool): {user_id}")
+            logger.info("load SKIPPED (no pool): %s", user_id)
             return {}
 
         try:
@@ -132,18 +135,18 @@ class YdbItemsRepository:
             result_items: dict[str, tuple[str, str]] = {}
             for row in result_sets[0].rows:
                 result_items[row.name] = (row.verb, row.location)
-        except Exception as e:
-            print(f"[db] load FAILED: {user_id} — {e}")
+        except Exception:
+            logger.exception("load FAILED: %s", user_id)
             return {}
         else:
-            print(f"[db] load OK: {user_id}, count={len(result_items)}")
+            logger.info("load OK: %s, count=%d", user_id, len(result_items))
             return result_items
 
     def delete_item(self, user_id: str, name: str) -> None:
         """Delete a single item from YDB."""
         pool = _ensure_pool()
         if pool is None:
-            print(f"[db] delete SKIPPED (no pool): {user_id} / {name}")
+            logger.info("delete SKIPPED (no pool): %s / %s", user_id, name)
             return
 
         try:
@@ -154,15 +157,15 @@ class YdbItemsRepository:
                     "$name": ydb.TypedValue(name, ydb.PrimitiveType.Utf8),
                 },
             )
-            print(f"[db] delete OK: {user_id} / {name}")
-        except Exception as e:
-            print(f"[db] delete FAILED: {user_id} / {name} — {e}")
+            logger.info("delete OK: %s / %s", user_id, name)
+        except Exception:
+            logger.exception("delete FAILED: %s / %s", user_id, name)
 
     def search_items(self, user_id: str, query: str) -> list[str]:
         """Find item names matching exactly (case-insensitive)."""
         pool = _ensure_pool()
         if pool is None:
-            print(f"[db] search SKIPPED (no pool): {user_id} / {query}")
+            logger.info("search SKIPPED (no pool): %s / %s", user_id, query)
             return []
 
         try:
@@ -174,18 +177,18 @@ class YdbItemsRepository:
                 },
             )
             names = [row.name for row in result_sets[0].rows]
-        except Exception as e:
-            print(f"[db] search FAILED: {user_id} / {query} — {e}")
+        except Exception:
+            logger.exception("search FAILED: %s / %s", user_id, query)
             return []
         else:
-            print(f"[db] search OK: {user_id} / {query}, count={len(names)}")
+            logger.info("search OK: %s / %s, count=%d", user_id, query, len(names))
             return names
 
     def list_names(self, user_id: str) -> list[str]:
         """Return only item names for a user."""
         pool = _ensure_pool()
         if pool is None:
-            print(f"[db] list_names SKIPPED (no pool): {user_id}")
+            logger.info("list_names SKIPPED (no pool): %s", user_id)
             return []
 
         try:
@@ -194,18 +197,18 @@ class YdbItemsRepository:
                 {"$user_id": ydb.TypedValue(user_id, ydb.PrimitiveType.Utf8)},
             )
             names = [row.name for row in result_sets[0].rows]
-        except Exception as e:
-            print(f"[db] list_names FAILED: {user_id} — {e}")
+        except Exception:
+            logger.exception("list_names FAILED: %s", user_id)
             return []
         else:
-            print(f"[db] list_names OK: {user_id}, count={len(names)}")
+            logger.info("list_names OK: %s, count=%d", user_id, len(names))
             return names
 
     def item_exists(self, user_id: str, name: str) -> bool:
         """Check if an exact item name exists for a user."""
         pool = _ensure_pool()
         if pool is None:
-            print(f"[db] exists SKIPPED (no pool): {user_id} / {name}")
+            logger.info("exists SKIPPED (no pool): %s / %s", user_id, name)
             return False
 
         try:
@@ -217,9 +220,9 @@ class YdbItemsRepository:
                 },
             )
             exists = len(result_sets[0].rows) > 0
-        except Exception as e:
-            print(f"[db] exists FAILED: {user_id} / {name} — {e}")
+        except Exception:
+            logger.exception("exists FAILED: %s / %s", user_id, name)
             return False
         else:
-            print(f"[db] exists OK: {user_id} / {name} = {exists}")
+            logger.info("exists OK: %s / %s = %s", user_id, name, exists)
             return exists

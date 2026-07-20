@@ -1,7 +1,11 @@
 from __future__ import annotations
 
-CANONICAL_DICT: dict[str, str] = {
-    "смартфон": "телефон",
-    "мобильник": "телефон",
-    "айфон": "телефон",
-}
+from types import MappingProxyType
+
+CANONICAL_DICT: MappingProxyType[str, str] = MappingProxyType(
+    {
+        "смартфон": "телефон",
+        "мобильник": "телефон",
+        "айфон": "телефон",
+    }
+)
