@@ -103,8 +103,8 @@ async def handle_save(message: Message, state: FSMContext, repo: ItemsRepository
         )
 
     if repo.item_exists(user_id, thing):
-        items = repo.load_items(user_id)
-        old_verb, old_location = items.get(thing, ("", ""))
+        saved_items = repo.load_items(user_id)
+        old_verb, old_location = saved_items.get(thing, ("", ""))
         await state.set_state(SaveForm.awaiting_confirmation)
         await state.update_data(
             pending_thing=thing,
@@ -125,10 +125,10 @@ async def handle_save(message: Message, state: FSMContext, repo: ItemsRepository
 @router.message(SaveForm.awaiting_confirmation)
 async def handle_confirmation(message: Message, state: FSMContext, repo: ItemsRepository) -> AliceResponse:
     """Handle yes/no confirmation for updating an existing item."""
-    data = await state.get_data()
-    pending_thing = data.get("pending_thing", "")
-    pending_location = data.get("pending_location", "")
-    pending_verb = data.get("pending_verb", "лежит")
+    fsm_data = await state.get_data()
+    pending_thing = fsm_data.get("pending_thing", "")
+    pending_location = fsm_data.get("pending_location", "")
+    pending_verb = fsm_data.get("pending_verb", "лежит")
     user_id = _user_id(message)
     intents = message.nlu.intents if message.nlu else {}
 
@@ -174,8 +174,8 @@ async def handle_find(message: Message, repo: ItemsRepository) -> AliceResponse:
 
     if len(matches) == 1:
         name = matches[0]
-        items = repo.load_items(user_id)
-        verb, location = items.get(name, ("лежит", ""))
+        saved_items = repo.load_items(user_id)
+        verb, location = saved_items.get(name, ("лежит", ""))
         return AliceResponse(response=Response(text=f"{name.capitalize()} {verb} {location}."))
 
     names = ", ".join(matches)
@@ -192,7 +192,8 @@ async def handle_list(message: Message, repo: ItemsRepository) -> AliceResponse:
     names = repo.list_names(user_id)
     if not names:
         return AliceResponse(response=Response(text="Я пока ничего не помню."))
-    return AliceResponse(response=Response(text="У вас есть: " + ", ".join(names) + "."))
+    items_str = ", ".join(names)
+    return AliceResponse(response=Response(text=f"У вас есть: {items_str}."))
 
 
 # ── Delete ────────────────────────────────────────────────────────────────────
@@ -207,8 +208,8 @@ async def handle_delete(message: Message, repo: ItemsRepository) -> AliceRespons
 
     thing = intent.thing
     user_id = _user_id(message)
-    items = repo.load_items(user_id)
-    if thing in items:
+    saved_items = repo.load_items(user_id)
+    if thing in saved_items:
         repo.delete_item(user_id, thing)
         return AliceResponse(response=Response(text=f"Забыла про {thing}."))
     return AliceResponse(response=Response(text=f"У меня нет воспоминаний про {thing}."))
