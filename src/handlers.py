@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import logging
 from typing import Any
 
 from aliceio import BaseMiddleware, Dispatcher, F, Router
@@ -10,8 +9,6 @@ from aliceio.types import AliceResponse, Message, Response, Update
 
 from src.db import ItemsRepository
 from src.nlu import DeleteIntent, FindIntent, SaveIntent
-
-logger = logging.getLogger(__name__)
 
 # ── FSM ───────────────────────────────────────────────────────────────────────
 

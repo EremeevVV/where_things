@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-import logging
 import os
+import sys
 from typing import Any
 
 from aliceio import Dispatcher, Skill
@@ -9,11 +9,15 @@ from aliceio.webhook.yandex_functions import (
     OneSkillYandexFunctionsRequestHandler,
     RuntimeContext,
 )
+from loguru import logger
 
 from src.db import YdbItemsRepository
 from src.handlers import setup_handlers
 
-logger = logging.getLogger(__name__)
+# ── Loguru setup ──────────────────────────────────────────────────────────────
+
+logger.remove()
+logger.add(sys.stderr, level=os.getenv("LOG_LEVEL", "INFO"))
 
 # ── Skill + Dispatcher ────────────────────────────────────────────────────────
 

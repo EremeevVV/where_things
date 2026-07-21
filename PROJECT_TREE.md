@@ -106,4 +106,4 @@ main.py → handlers.py → nlu/intents.py → slots.py → message.nlu.intents
 | Модули src/ | 12 файлов (включая nlu/ и db/) |
 | Тесты | 89 тестов (81 passed, 8 skipped) |
 | thing/ тесты | 35 тестов |
-| Зависимости | ydb, aliceio, pymorphy3 |
+| Зависимости | ydb, aliceio, pymorphy3, loguru |

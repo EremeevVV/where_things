@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from aliceio.types import Message
+from loguru import logger
 
 from src.nlu.slots import get_intent, get_slot
 from src.nlu.thing.normalize import normalize_thing
@@ -36,8 +37,10 @@ class SaveIntent:
             return None
         raw = get_slot(message, INTENT_SAVE, "thing")
         if not raw:
+            logger.warning("save intent missing thing slot")
             return None
         normalized = normalize_thing(raw)
+        logger.info("save intent parsed: thing={t}, place={p}", t=raw, p=get_slot(message, INTENT_SAVE, "place"))
         return cls(
             place=get_slot(message, INTENT_SAVE, "place"),
             display_name=normalized.display_name,
@@ -61,8 +64,10 @@ class FindIntent:
             return None
         raw = get_slot(message, INTENT_FIND, "thing")
         if not raw:
+            logger.warning("find intent missing thing slot")
             return None
         normalized = normalize_thing(raw)
+        logger.info("find intent parsed: thing={t}", t=raw)
         return cls(
             display_name=normalized.display_name,
             canonical_key=normalized.canonical_key,
@@ -83,8 +88,10 @@ class DeleteIntent:
             return None
         raw = get_slot(message, INTENT_DELETE, "thing")
         if not raw:
+            logger.warning("delete intent missing thing slot")
             return None
         normalized = normalize_thing(raw)
+        logger.info("delete intent parsed: thing={t}", t=raw)
         return cls(
             display_name=normalized.display_name,
             canonical_key=normalized.canonical_key,

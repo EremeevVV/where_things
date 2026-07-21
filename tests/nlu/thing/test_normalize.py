@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+
 from src.nlu.thing.decomposer import DecomposeStatus
 from src.nlu.thing.normalize import normalize_thing
 
@@ -71,3 +73,34 @@ class TestNormalizeDegraded:
         assert result.status == DecomposeStatus.NO_HEAD
         assert result.canonical_key == ""
         assert result.display_name == ""
+
+
+# ── Logging tests ─────────────────────────────────────────────────────────────
+
+
+class TestNormalizeLogging:
+    """Tests for normalize_thing logging."""
+
+    def test_ok_logs_info(self, caplog):
+        """normalize_thing logs INFO on successful decomposition."""
+        with caplog.at_level(logging.INFO, logger="src.nlu.thing.normalize"):
+            normalize_thing("смартфон")
+        assert any("normalize OK" in record.message for record in caplog.records)
+
+    def test_no_head_logs_warning(self, caplog):
+        """normalize_thing logs WARNING on NO_HEAD status."""
+        with caplog.at_level(logging.WARNING, logger="src.nlu.thing.normalize"):
+            normalize_thing("прекрасно")
+        assert any("NO_HEAD" in record.message for record in caplog.records)
+
+    def test_ambiguous_head_logs_warning(self, caplog):
+        """normalize_thing logs WARNING on AMBIGUOUS_HEAD status."""
+        with caplog.at_level(logging.WARNING, logger="src.nlu.thing.normalize"):
+            normalize_thing("мама мыла раму")
+        assert any("AMBIGUOUS_HEAD" in record.message for record in caplog.records)
+
+    def test_ok_logs_raw_input(self, caplog):
+        """normalize_thing logs the raw input on OK."""
+        with caplog.at_level(logging.INFO, logger="src.nlu.thing.normalize"):
+            normalize_thing("мобильник")
+        assert any("raw=мобильник" in record.message for record in caplog.records)
