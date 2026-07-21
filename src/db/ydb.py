@@ -1,13 +1,15 @@
 from __future__ import annotations
 
 import datetime
+import logging
 import os
 
 import ydb
 import ydb.iam
-from loguru import logger
 
 from src.db.protocol import ItemRecord
+
+logger = logging.getLogger(__name__)
 
 # ── YDB driver + query pool (module level — reused across warm invocations) ──
 
@@ -61,7 +63,7 @@ def _ensure_pool() -> ydb.QuerySessionPool | None:
         logger.info("YDB_ENDPOINT or YDB_DATABASE not set, skipping")
         return None
 
-    logger.info("Initializing: endpoint={ep} / db={db}", ep=YDB_ENDPOINT, db=YDB_DATABASE)
+    logger.info("Initializing: endpoint=%s / db=%s", YDB_ENDPOINT, YDB_DATABASE)
     try:
         credentials = ydb.iam.MetadataUrlCredentials()
         _driver = ydb.Driver(
@@ -72,7 +74,7 @@ def _ensure_pool() -> ydb.QuerySessionPool | None:
         _driver.wait(fail_fast=True, timeout=5)
         _pool = ydb.QuerySessionPool(_driver)
     except Exception:
-        logger.opt(exception=True).error("FAILED to init YDB")
+        logger.exception("FAILED to init YDB")
         return None
     else:
         logger.info("YDB pool initialized")
@@ -98,7 +100,7 @@ class YdbItemsRepository:
         """Save or update an item in YDB."""
         pool = _ensure_pool()
         if pool is None:
-            logger.info("upsert SKIPPED (no pool): uid={uid} / key={key}", uid=user_id[:8], key=canonical_key)
+            logger.info("upsert SKIPPED (no pool): uid=%s / key=%s", user_id[:8], canonical_key)
             return
 
         try:
@@ -117,15 +119,15 @@ class YdbItemsRepository:
                 },
             )
             logger.info(
-                "upsert OK: uid={uid} / key={key} [{name}] = {verb} {loc}",
-                uid=user_id[:8],
-                key=canonical_key,
-                name=display_name,
-                verb=verb,
-                loc=location,
+                "upsert OK: uid=%s / key=%s [%s] = %s %s",
+                user_id[:8],
+                canonical_key,
+                display_name,
+                verb,
+                location,
             )
         except Exception:
-            logger.opt(exception=True).error("upsert FAILED: uid={uid} / key={key}", uid=user_id[:8], key=canonical_key)
+            logger.exception("upsert FAILED: uid=%s / key=%s", user_id[:8], canonical_key)
 
     def find_by_canonical_key(
         self,
@@ -135,7 +137,7 @@ class YdbItemsRepository:
         """Find an item by its canonical key."""
         pool = _ensure_pool()
         if pool is None:
-            logger.info("find SKIPPED (no pool): uid={uid} / key={key}", uid=user_id[:8], key=canonical_key)
+            logger.info("find SKIPPED (no pool): uid=%s / key=%s", user_id[:8], canonical_key)
             return None
 
         try:
@@ -157,18 +159,18 @@ class YdbItemsRepository:
                     verb=row.verb,
                 )
         except Exception:
-            logger.opt(exception=True).error("find FAILED: uid={uid} / key={key}", uid=user_id[:8], key=canonical_key)
+            logger.exception("find FAILED: uid=%s / key=%s", user_id[:8], canonical_key)
             return None
         else:
             found = "yes" if item else "no"
-            logger.info("find OK: uid={uid} / key={key}, found={f}", uid=user_id[:8], key=canonical_key, f=found)
+            logger.info("find OK: uid=%s / key=%s, found=%s", user_id[:8], canonical_key, found)
             return item
 
     def delete_item(self, user_id: str, canonical_key: str) -> None:
         """Delete a single item from YDB."""
         pool = _ensure_pool()
         if pool is None:
-            logger.info("delete SKIPPED (no pool): uid={uid} / key={key}", uid=user_id[:8], key=canonical_key)
+            logger.info("delete SKIPPED (no pool): uid=%s / key=%s", user_id[:8], canonical_key)
             return
 
         try:
@@ -179,15 +181,15 @@ class YdbItemsRepository:
                     "$canonical_key": ydb.TypedValue(canonical_key, ydb.PrimitiveType.Utf8),
                 },
             )
-            logger.info("delete OK: uid={uid} / key={key}", uid=user_id[:8], key=canonical_key)
+            logger.info("delete OK: uid=%s / key=%s", user_id[:8], canonical_key)
         except Exception:
-            logger.opt(exception=True).error("delete FAILED: uid={uid} / key={key}", uid=user_id[:8], key=canonical_key)
+            logger.exception("delete FAILED: uid=%s / key=%s", user_id[:8], canonical_key)
 
     def list_display_names(self, user_id: str) -> list[str]:
         """Return all display names for a user."""
         pool = _ensure_pool()
         if pool is None:
-            logger.info("list_names SKIPPED (no pool): uid={uid}", uid=user_id[:8])
+            logger.info("list_names SKIPPED (no pool): uid=%s", user_id[:8])
             return []
 
         try:
@@ -197,8 +199,8 @@ class YdbItemsRepository:
             )
             names = [row.display_name for row in result_sets[0].rows]
         except Exception:
-            logger.opt(exception=True).error("list_names FAILED: uid={uid}", uid=user_id[:8])
+            logger.exception("list_names FAILED: uid=%s", user_id[:8])
             return []
         else:
-            logger.info("list_names OK: uid={uid}, count={c}", uid=user_id[:8], c=len(names))
+            logger.info("list_names OK: uid=%s, count=%d", user_id[:8], len(names))
             return names

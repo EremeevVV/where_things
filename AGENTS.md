@@ -78,10 +78,10 @@ uv run --no-sync python tests/test_runner.py
 .venv\Scripts\python.exe -m mypy main.py --ignore-missing-imports --strict
 
 # Debug logging (all NLU decomposition details)
-LOG_LEVEL=DEBUG uv run --no-sync python -m pytest
+LOG_LEVEL=DEBUG .venv\Scripts\python.exe -m pytest
 
 # Warning-only logging (skip INFO)
-LOG_LEVEL=WARNING uv run --no-sync python -m pytest
+LOG_LEVEL=WARNING .venv\Scripts\python.exe -m pytest
 ```
 
 ## Tests and test infrastructure

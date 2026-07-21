@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from enum import StrEnum
 
 import pymorphy3
-from loguru import logger
 
+logger = logging.getLogger(__name__)
 morph = pymorphy3.MorphAnalyzer()
 
 type NounInfo = tuple[str, str]
@@ -84,16 +85,16 @@ def decompose(thing_phrase: str) -> DecomposeResult:
     nouns, adjs = _parse_tokens(thing_phrase)
     head = _pick_head(nouns)
     if head is not None:
-        logger.debug("decompose OK: phrase={p}, head={h}", p=thing_phrase, h=head)
+        logger.debug("decompose OK: phrase=%s, head=%s", thing_phrase, head)
         return DecomposeResult(
             descriptor=_build_descriptor(thing_phrase, head, nouns, adjs),
             status=DecomposeStatus.OK,
         )
     if not nouns:
-        logger.warning("decompose NO_HEAD: phrase={p}", p=thing_phrase)
+        logger.warning("decompose NO_HEAD: phrase=%s", thing_phrase)
         return DecomposeResult(descriptor=None, status=DecomposeStatus.NO_HEAD)
     candidates = tuple(nf for nf, case in nouns if case != "gent")
-    logger.warning("decompose AMBIGUOUS_HEAD: phrase={p}, candidates={c}", p=thing_phrase, c=candidates)
+    logger.warning("decompose AMBIGUOUS_HEAD: phrase=%s, candidates=%s", thing_phrase, candidates)
     return DecomposeResult(
         descriptor=None,
         status=DecomposeStatus.AMBIGUOUS_HEAD,
