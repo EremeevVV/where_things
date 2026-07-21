@@ -4,7 +4,7 @@ import json
 import logging
 import os
 import sys
-from typing import Any
+from typing import Any, ClassVar
 
 from aliceio import Dispatcher, Skill
 from aliceio.webhook.yandex_functions import (
@@ -19,15 +19,26 @@ from src.handlers import setup_handlers
 
 
 class JsonFormatter(logging.Formatter):
-    """Structured JSON logs for Yandex Cloud Logging (stdout → json_payload)."""
+    """Structured JSON logs for Yandex Cloud Logging (stdout → json_payload).
+
+    Required fields per platform spec:
+      - message/msg: entry text
+      - level: TRACE | DEBUG | INFO | WARN | ERROR | FATAL
+    Optional: request_id (for concurrent function call tracing).
+    """
+
+    _LEVEL_MAP: ClassVar[dict[str, str]] = {"WARNING": "WARN", "CRITICAL": "FATAL"}
 
     def format(self, record: logging.LogRecord) -> str:
         """Serialize LogRecord to JSON string."""
+        level = self._LEVEL_MAP.get(record.levelname, record.levelname)
         log_obj: dict[str, Any] = {
-            "level": record.levelname,
-            "logger": record.name,
             "message": record.getMessage(),
+            "level": level,
+            "logger": record.name,
         }
+        if getattr(record, "request_id", None):
+            log_obj["request_id"] = record.request_id  # type: ignore[attr-defined]
         if record.exc_info:
             log_obj["exception"] = self.formatException(record.exc_info)
         return json.dumps(log_obj, ensure_ascii=False)
