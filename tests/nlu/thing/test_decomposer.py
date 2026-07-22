@@ -1,6 +1,15 @@
 from __future__ import annotations
 
-from src.nlu.thing.decomposer import DecomposeResult, DecomposeStatus, decompose
+from src.nlu.thing.decomposer import (
+    DecomposeResult,
+    DecomposeStatus,
+    Reason,
+    ResolvedToken,
+    _total,
+    decompose,
+    score_genitive_demotion,
+    score_unique_noun,
+)
 
 TEST_KEY = "ключ"
 
@@ -27,6 +36,13 @@ class TestDecomposeBasic:
         actual = decompose("гаечный ключ")
         _assert_ok_head(actual, TEST_KEY)
         assert actual.descriptor.adj_modifiers == ("гаечный",)
+        assert actual.descriptor.noun_modifiers == ()
+
+    def test_noun_with_ambiguous_adj(self):
+        """Существительное с прилагательным, которое иногда существительное."""
+        actual = decompose("рабочий ноутбук")
+        _assert_ok_head(actual, "ноутбук")
+        assert actual.descriptor.adj_modifiers == ("рабочий",)
         assert actual.descriptor.noun_modifiers == ()
 
     def test_noun_with_noun_preposition(self):
@@ -133,3 +149,94 @@ class TestDecomposeInvariants:
         actual = decompose(phrase)
         _assert_ok_head(actual, TEST_KEY)
         assert actual.descriptor.display == phrase
+
+
+# ── POS resolution (Etapa 2a) ────────────────────────────────────────────────
+
+
+class TestPosResolution:
+    """Тесты разрешения омонимии NOUN vs ADJ."""
+
+    def test_ambiguous_adj_resolved_to_adj_before_noun(self):
+        """рабочий ноутбук: 'рабочий' resolves to ADJ (agrees with ноутбук)."""
+        actual = decompose("рабочий ноутбук")
+        _assert_ok_head(actual, "ноутбук")
+        assert actual.descriptor.adj_modifiers == ("рабочий",)
+        assert actual.descriptor.noun_modifiers == ()
+
+    def test_ambiguous_adj_resolved_to_adj_military(self):
+        """военный билет: 'военный' resolves to ADJ (agrees with билет)."""
+        actual = decompose("военный билет")
+        _assert_ok_head(actual, "билет")
+        assert actual.descriptor.adj_modifiers == ("военный",)
+        assert actual.descriptor.noun_modifiers == ()
+
+    def test_preposition_not_classified_as_modifier(self):
+        """Предложения не попадают в модификаторы."""
+        actual = decompose("зарядка для айфона")
+        _assert_ok_head(actual, "зарядка")
+        assert actual.descriptor.noun_modifiers == ("айфон",)
+        # 'для' should NOT be in adj_modifiers
+        assert "для" not in actual.descriptor.adj_modifiers
+
+    def test_single_noun_only(self):
+        """Одиночное существительное без модификаторов."""
+        actual = decompose("телефон")
+        _assert_ok_head(actual, "телефон")
+        assert actual.descriptor.adj_modifiers == ()
+        assert actual.descriptor.noun_modifiers == ()
+
+
+# ── Scoring rules unit tests (Etapa 4) ──────────────────────────────────────
+
+
+class TestScoringRules:
+    """Unit-тесты правил скоринга."""
+
+    def test_score_unique_noun_single(self):
+        """score_unique_noun: +5 если один NOUN."""
+        candidate = ResolvedToken(text="ключ", normal_form="ключ", is_noun=True, is_adj=False, case="nomn")
+        all_nouns = (candidate,)
+        result = score_unique_noun(candidate, all_nouns)
+        assert result is not None
+        assert result.reason == Reason.UNIQUE_NOUN
+        assert result.points == 5
+
+    def test_score_unique_noun_multiple(self):
+        """score_unique_noun: None если больше одного NOUN."""
+        n1 = ResolvedToken(text="ключ", normal_form="ключ", is_noun=True, is_adj=False, case="nomn")
+        n2 = ResolvedToken(text="зарядка", normal_form="зарядка", is_noun=True, is_adj=False, case="nomn")
+        result = score_unique_noun(n1, (n1, n2))
+        assert result is None
+
+    def test_score_genitive_demotion_gent(self):
+        """score_genitive_demotion: -3 для genitive."""
+        candidate = ResolvedToken(text="машины", normal_form="машина", is_noun=True, is_adj=False, case="gent")
+        result = score_genitive_demotion(candidate, ())
+        assert result is not None
+        assert result.reason == Reason.GENITIVE_DEMOTED
+        assert result.points == -3
+
+    def test_score_genitive_demotion_non_gent(self):
+        """score_genitive_demotion: None для non-genitive."""
+        candidate = ResolvedToken(text="ключ", normal_form="ключ", is_noun=True, is_adj=False, case="nomn")
+        result = score_genitive_demotion(candidate, ())
+        assert result is None
+
+    def test_total_scoring(self):
+        """_total суммирует очки по правилам."""
+        # Single noun: UNIQUE_NOUN(+5) + FIRST_AMONG_GENITIVE(0, not all gent) = 5
+        n = ResolvedToken(text="ключ", normal_form="ключ", is_noun=True, is_adj=False, case="nomn", position=0)
+        assert _total(n, (n,)) == 5
+
+    def test_total_scoring_two_nouns(self):
+        """_total: два nominative → равные очки."""
+        n1 = ResolvedToken(text="телефон", normal_form="телефон", is_noun=True, is_adj=False, case="nomn", position=0)
+        n2 = ResolvedToken(text="зарядка", normal_form="зарядка", is_noun=True, is_adj=False, case="nomn", position=1)
+        assert _total(n1, (n1, n2)) == _total(n2, (n1, n2))
+
+    def test_total_scoring_genitive_demoted(self):
+        """_total: genitive получает -3."""
+        n1 = ResolvedToken(text="ключ", normal_form="ключ", is_noun=True, is_adj=False, case="nomn", position=0)
+        n2 = ResolvedToken(text="машины", normal_form="машина", is_noun=True, is_adj=False, case="gent", position=2)
+        assert _total(n1, (n1, n2)) > _total(n2, (n1, n2))
