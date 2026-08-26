@@ -4,17 +4,31 @@
 
 Yandex Alice voice skill: user says "запомни, что паспорт лежит в ящике", skill remembers. Later: "где лежит паспорт?" — skill answers.
 
-Stack: Python 3.14, aliceio, Yandex Cloud Functions (webhook), YDB serverless.
+Stack: Python 3.12, aliceio, Yandex Cloud Functions (webhook), YDB serverless.
 
 ## Key files
 
-- `PROJECT_INSTRUCTIONS.md` — full project context, constraints, architecture decisions, iteration log. **Read this first.**
-- `KICKOFF_PROMPT.md` — iteration plan and current task.
-- `main.py` — entry point: Dispatcher + YCF handler (~26 lines).
-- `src/handlers.py` — all intent handlers: `handle_launch`, `handle_save`, `handle_find`, `handle_list_intent`, `handle_delete`, `handle_unknown`. FSM via `SaveForm`. `AuthMiddleware`.
-- `src/repository.py` — `ItemsRepository` Protocol (interface).
-- `src/ydb_repository.py` — `YdbItemsRepository` (YDB implementation).
-- `src/memory_repository.py` — `InMemoryItemsRepository` (fake for tests).
+- `openspec/project.md` — полный контекст проекта: ограничения платформы, архитектура, ADR, история итераций. **Читать первым.**
+- `openspec/specs/` — спеки текущих возможностей (истина о том, что реализовано).
+- `openspec/changes/` — активные изменения (proposal/design/tasks/spec deltas).
+- `main.py` — entry point: Dispatcher + YCF handler (~74 lines).
+- `src/handlers.py` — все intent handlers + FSM (`SaveForm.awaiting_confirmation`) + `AuthMiddleware`.
+- `src/nlu/` — типизированные интенты (`intents.py`, `slots.py`) и конвейер нормализации вещи (`thing/`: decomposer → canonicalizer → canonical_key).
+- `src/db/` — `ItemsRepository` Protocol (`protocol.py`), YDB-реализация (`ydb.py`), InMemory фейк для тестов (`memory.py`).
+- `alice_intents_grammars.md` — грамматики интентов для консоли Яндекс Диалогов.
+
+## OpenSpec workflow
+
+Новая работа начинается через slash-команды opencode:
+
+- `/opsx-explore` — обдумать идею до кода
+- `/opsx-propose <kebab-name>` — создать change (proposal + specs deltas + design + tasks)
+- `/opsx-apply <change>` — реализовать по tasks.md
+- `/opsx-sync <change>` — смержить дельты в основные спеки без архивации
+- `/opsx-archive <change>` — финализировать: дельты → specs/, change → archive/
+
+Спеки и артефакты пишутся на русском; сценарии — Gherkin внутри fenced-блоков
+(конвенции в `openspec/config.yaml`). Изменение поведения кода = изменение спека.
 
 ## NLU
 
@@ -90,8 +104,11 @@ All test files and test utilities MUST live in the `tests/` folder. Never place 
 
 ```
 tests/
+├── nlu/thing/                   # normalization pipeline tests (decomposer/canonicalizer/matcher/normalize)
+├── conftest.py                  # shared fixtures
 ├── test_handler.py              # unit tests for handlers (async, uses asyncio.run)
 ├── test_handler_manual.py       # manual test runner (invoked via CLI)
+├── test_nlu_logging.py          # intent logging tests
 ├── test_runner.py               # Cloud Functions simulator with timing checks
 ├── test_states_with_repo.py     # integration tests with InMemoryItemsRepository
 └── test_ydb.py                  # YDB integration tests (skipped without env vars)
@@ -109,7 +126,7 @@ Tests use `asyncio.run()` to call async handlers directly. Handlers receive `Mes
 
 ## Development approach
 
-Work in iterations per `KICKOFF_PROMPT.md`. After each iteration, update the iteration log in `PROJECT_INSTRUCTIONS.md` section 9. Use aliceio Dispatcher/Router pattern. Intents handled by Yandex Dialogs NLU.
+Работа идёт через OpenSpec changes (`/opsx-propose` → ревью → `/opsx-apply`). Спецификация поведения живёт в `openspec/specs/`; изменение наблюдаемого поведения кода требует обновления соответствующего спека. История изменений — в `openspec/changes/archive/`.
 
 ## Code style policy
 

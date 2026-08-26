@@ -1,0 +1,37 @@
+schema: spec-driven
+
+# Project context (optional)
+# This is shown to AI when creating artifacts.
+# Add your tech stack, conventions, style guides, domain knowledge, etc.
+context: |
+  Навык Яндекс Алисы «Где лежит вещь»: пользователь голосом сообщает, куда положил
+  вещь; навык запоминает и позже отвечает на вопрос «где лежит X?».
+
+  Стек: Python 3.12, aliceio (Dispatcher/Router/FSM), Yandex Cloud Functions (webhook),
+  YDB serverless, pymorphy3 (морфология), uv (пакетный менеджер).
+
+  Полный контекст платформы, ограничения и история решений: openspec/project.md —
+  читать перед созданием артефактов.
+
+  Язык всех артефактов (proposal, specs, design, tasks): русский.
+
+  Верификация кода (обязательна после реализации): ruff format . && ruff check . --fix
+  && flake8 --select=WPS . && mypy main.py --ignore-missing-imports --strict && pytest -v
+
+# Per-artifact rules (optional)
+# Add custom rules for specific artifacts.
+rules:
+  specs:
+    - Каждый сценарий (#### Scenario:) содержит fenced-блок ```gherkin с телом на русском
+    - Ключевые слова Gherkin русифицированы: Допустим/Пусть, Когда, Тогда, И, Но, Примеры
+    - Структурные заголовки OpenSpec не переводить: Requirement:, Scenario:, ## Requirements,
+      ## ADDED/MODIFIED/REMOVED Requirements
+    - Один Requirement = одно наблюдаемое поведение системы
+    - Каждый Scenario трассируется к реальному поведению кода или теста
+  tasks:
+    - Задачи атомарные, каждая проверяема независимо
+    - Финальная задача любого change — запуск полного пайплайна верификации
+      (ruff format / ruff check / flake8 WPS / mypy / pytest) без регрессий
+  proposal:
+    - Обязателен раздел Non-goals (что сознательно не делаем)
+    - Объём до 500 слов
