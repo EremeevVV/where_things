@@ -98,6 +98,28 @@ LOG_LEVEL=DEBUG .venv\Scripts\python.exe -m pytest
 LOG_LEVEL=WARNING .venv\Scripts\python.exe -m pytest
 ```
 
+## Utility scripts
+
+Use the helper scripts in `scripts/` for routine project tasks:
+
+1. **Подготовка архива для выгрузки на площадку (Yandex Cloud Functions):**
+   ```bash
+   .venv\Scripts\python.exe scripts/build_ycf_zip.py
+   ```
+   Упаковывает `main.py`, `src/` и `requirements.txt` в `var/where_things.zip`.
+
+2. **Подготовка файлов проекта для обновления во внешней LLM:**
+   ```bash
+   .venv\Scripts\python.exe scripts/collect_for_external.py
+   ```
+   Собирает исходники, спеки (`openspec/`), документацию и конфиги (без `.env`, кэшей и `var/`) в `var/flatten/`.
+
+3. **Обновление дерева проекта в `AGENTS.md`:**
+   ```bash
+   .venv\Scripts\python.exe scripts/project_tree.py
+   ```
+   Генерирует актуальное дерево каталогов и файлов проекта для вставки в `AGENTS.md`.
+
 ## Tests and test infrastructure
 
 All test files and test utilities MUST live in the `tests/` folder. Never place test files in the project root.
